@@ -117,10 +117,8 @@ async function fetchCityPage(city,start,end){
       const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',100);
       const details=[];
-      for(const link of links.slice(0,18)){
-        const event=await fetchDetail(link,start,end,'AllEvents');
-        if(event) details.push(event);
-      }
+      const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents')));
+      details.push(...detailResults.filter(Boolean));
       return [...direct,...details];
     }catch{return []}
   }));
@@ -135,8 +133,6 @@ async function fetchCategory(city,start,end,category){
   const urls=[];
   for(const c of candidates){
     urls.push(`https://allevents.in/${slug}/${c}--${month}`);
-    urls.push(`https://allevents.in/${slug}/${c}--${yr}`);
-    urls.push(`https://allevents.in/${slug}/${c}`);
   }
   const pages=await Promise.all([...new Set(urls)].map(async url=>{
     try{
@@ -147,10 +143,8 @@ async function fetchCategory(city,start,end,category){
       const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',forced)).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',80);
       const details=[];
-      for(const link of links.slice(0,10)){
-        const event=await fetchDetail(link,start,end,'AllEvents',forced);
-        if(event) details.push(event);
-      }
+      const detailResults=await Promise.all(links.slice(0,4).map(link=>fetchDetail(link,start,end,'AllEvents',forced)));
+      details.push(...detailResults.filter(Boolean));
       return [...direct,...details];
     }catch{return []}
   }));
@@ -165,10 +159,8 @@ async function fetchSearch(city,start,end,q){
     const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
     const links=collectLinks(html,'allevents.in',80);
     const details=[];
-    for(const link of links.slice(0,14)){
-      const event=await fetchDetail(link,start,end,'AllEvents');
-      if(event) details.push(event);
-    }
+    const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents')));
+    details.push(...detailResults.filter(Boolean));
     return [...direct,...details];
   }catch{return []}
 }
@@ -180,10 +172,8 @@ async function fetchBookMyShow(city,start,end){
     const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'BookMyShow')).filter(e=>e&&inRange(e.date,start,end));
     const links=collectLinks(html,'in.bookmyshow.com',40).filter(h=>/\/events\//i.test(h));
     const details=[];
-    for(const link of links.slice(0,8)){
-      const event=await fetchDetail(link,start,end,'BookMyShow');
-      if(event) details.push(event);
-    }
+    const detailResults=await Promise.all(links.slice(0,4).map(link=>fetchDetail(link,start,end,'BookMyShow')));
+    details.push(...detailResults.filter(Boolean));
     return [...direct,...details];
   }catch{return []}
 }
