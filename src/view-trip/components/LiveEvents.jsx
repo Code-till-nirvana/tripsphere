@@ -48,22 +48,20 @@ export default function LiveEvents({trip}){
      const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
      requestStart=fmt(saturday);requestEnd=fmt(sunday);
    }
-   const result=await getLiveEvents({city,startDate:requestStart,endDate:requestEnd,category:nextCategory,search});
-   setData(result); setLoading(false);
+   try{
+     const result=await getLiveEvents({city,startDate:requestStart,endDate:requestEnd,category:nextCategory,search});
+     setData(result||{events:[],live:false,message:'Event listings are temporarily unavailable.'});
+   }catch(error){
+     setData({events:[],live:false,source:'Event search',message:'We could not load event listings right now. Please try again.'});
+   }finally{setLoading(false);}
  };
  useEffect(()=>{setCategory('all');setSubmittedQuery('');setQuery('');load({nextCategory:'all',search:''})},[city,startDate,endDate]);
  const cityName=city.split(',')[0]||'your destination';
  const filtered=useMemo(()=>{
-   // Prefer real event cards. If a provider temporarily returns only the city
-   // discovery fallback, keep that useful card visible instead of an empty state.
    let events=(data.events||[]).filter(e=>!e.directory);
    if(dateFilter==='today'){
      const today=new Date().toISOString().slice(0,10); events=events.filter(e=>sameDay(e.date,today));
    } else if(dateFilter==='weekend') events=events.filter(e=>thisWeekend(e.date));
-   if(!events.length && dateFilter==='trip'){
-     const directory=(data.events||[]).find(e=>e.directory);
-     if(directory) return [directory];
-   }
    return events;
  },[data.events,dateFilter]);
  const chooseCategory=(id)=>{setCategory(id);setSubmittedQuery('');setQuery('');setDateFilter('trip');load({nextCategory:id,search:'',nextDateFilter:'trip'})};
@@ -79,10 +77,10 @@ export default function LiveEvents({trip}){
     <div className="event-date-filters"><span>When</span><button className={dateFilter==='trip'?'active':''} onClick={()=>chooseDateFilter('trip')}>My trip dates</button><button className={dateFilter==='today'?'active':''} onClick={()=>chooseDateFilter('today')}>Today</button><button className={dateFilter==='weekend'?'active':''} onClick={()=>chooseDateFilter('weekend')}>Weekend</button></div>
    </div>
 
-   <div className="events-results-heading"><div><b>{submittedQuery?`Results for “${submittedQuery}”`:CATEGORIES.find(c=>c.id===category)?.label||'Events'} in {cityName}</b><span>{filtered.some(e=>e.directory) ? 'No individual events returned · city directory link shown' : filtered.length ? `${filtered.length} live event listing${filtered.length===1?'':'s'} shown` : loading ? 'Finding current listings…' : 'Try another category or search'}</span></div>{data.updatedAt&&filtered.some(e=>!e.directory)&&<small><BadgeCheck size={11}/> Updated live</small>}</div>
+   <div className="events-results-heading"><div><b>{submittedQuery?`Results for “${submittedQuery}”`:CATEGORIES.find(c=>c.id===category)?.label||'Events'} in {cityName}</b><span>{filtered.length ? `${filtered.length} verified event listing${filtered.length===1?'':'s'} shown` : loading ? 'Finding current listings…' : 'No verified listings for this selection'}</span></div>{data.updatedAt&&filtered.length>0&&<small><BadgeCheck size={11}/> Updated live</small>}</div>
 
    {loading?<div className="events-grid event-skeletons">{[1,2,3,4,5,6].map(i=><div className="event-card skeleton-card" key={i}><div/><div className="event-body"><div className="skeleton-line short"/><div className="skeleton-line"/><div className="skeleton-line medium"/></div></div>)}
-   </div>:filtered.length?<div className="events-grid">{filtered.map(event=><article className={`event-card ${event.directory?'event-directory-card':''}`} key={event.id}><img src={event.image||'/placeholder.jpg'} alt={event.name}/><div className="event-body"><span className="event-category">{event.category||'LIVE EVENT'}</span><h3>{event.name}</h3><p><CalendarDays size={13}/> {event.directory?'Directory link · not an individual event':`${displayDate(event.date)} · ${event.time}`}</p><p><MapPin size={13}/> {event.venue||'Venue listed by organiser'}</p><div className="event-bottom"><b>{event.price||'See organiser'}</b><a href={event.url} target="_blank" rel="noreferrer">{event.directory?'Explore live listings':'View listing'} <ExternalLink size={12}/></a></div><small className="live-source-label"><BadgeCheck size={11}/> {event.source||data.source}</small></div></article>)}</div>:<div className="event-smart-empty"><Sparkles size={20}/><div><b>No matching listings in this filter.</b><span>Try another category, date filter, or search term.</span></div></div>}
+   </div>:filtered.length?<div className="events-grid">{filtered.map(event=><article className={`event-card ${event.directory?'event-directory-card':''}`} key={event.id}><img src={event.image||'/placeholder.jpg'} alt={event.name}/><div className="event-body"><span className="event-category">{event.category||'LIVE EVENT'}</span><h3>{event.name}</h3><p><CalendarDays size={13}/> {event.directory?'Directory link · not an individual event':`${displayDate(event.date)} · ${event.time}`}</p><p><MapPin size={13}/> {event.venue||'Venue listed by organiser'}</p><div className="event-bottom"><b>{event.price||'See organiser'}</b><a href={event.url} target="_blank" rel="noreferrer">{event.directory?'Explore live listings':'View listing'} <ExternalLink size={12}/></a></div><small className="live-source-label"><BadgeCheck size={11}/> {event.source||data.source}</small></div></article>)}</div>:<div className="event-smart-empty"><div className="event-empty-mark"><CalendarDays size={18}/></div><div><b>{submittedQuery?'No events match your search.':`No ${CATEGORIES.find(c=>c.id===category)?.label?.toLowerCase()||'event'} found in ${cityName} for these dates.`}</b><span>There are no verified individual listings to show right now. Try different dates or explore all events.</span><div className="event-empty-actions"><button type="button" onClick={()=>chooseDateFilter('trip')}>Try trip dates</button><button type="button" onClick={()=>chooseCategory('all')}>Explore all events</button></div></div></div>}
 
    <div className="events-feed-note"><BadgeCheck size={15}/><div><b>Live local discovery</b><span>{data.message||'Listings are fetched from public event providers for this city and trip date range.'}</span></div></div>
  </section>;

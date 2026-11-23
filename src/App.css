@@ -62,3 +62,23 @@
 .live-rail-content .live-rail-head{padding-top:12px}
 .live-rail-content .live-rail-head p{margin-top:4px;font-size:9px;color:#7f8c87}
 @media(max-width:560px){.live-rail-toggle{padding:11px;gap:9px}.live-rail-toggle-action{font-size:9px}.live-rail-toggle-copy small{max-width:190px}.live-rail-content{padding:0 10px 10px}}
+
+/* Professional no-results state for live event discovery */
+.event-smart-empty{display:flex;align-items:center;justify-content:center;gap:13px;min-height:118px;padding:22px;border:1px solid #e4ebe7;border-radius:16px;background:#fbfcfb;text-align:left}
+.event-empty-mark{width:38px;height:38px;flex:0 0 38px;display:grid;place-items:center;border-radius:12px;background:#eff6f2;color:#6b8178}
+.event-smart-empty>div:last-child{display:grid;justify-items:start;gap:6px;max-width:560px}
+.event-smart-empty b{font-size:12px;font-weight:800;color:#29423a}
+.event-smart-empty span{font-size:10px;line-height:1.55;color:#7b8983}
+.event-empty-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+.event-empty-actions button{border:1px solid #dce6e1;background:#fff;color:#426057;border-radius:9px;padding:7px 10px;font-size:9px;font-weight:800;cursor:pointer}
+.event-empty-actions button:last-child{background:#0d2b26;border-color:#0d2b26;color:#fff}
+@media(max-width:560px){.event-smart-empty{align-items:flex-start;padding:16px}.event-empty-actions{width:100%}}
+
+/* Native details/summary toggle for reliable, keyboard-accessible rail expansion */
+details.live-rail-panel{display:block;padding:0;overflow:hidden}
+details.live-rail-panel>summary.live-rail-toggle{display:flex;list-style:none;cursor:pointer;user-select:none}
+details.live-rail-panel>summary.live-rail-toggle::-webkit-details-marker{display:none}
+details.live-rail-panel>summary.live-rail-toggle::marker{content:""}
+details.live-rail-panel>summary.live-rail-toggle:focus-visible{outline:2px solid #078570;outline-offset:-3px;border-radius:12px}
+details.live-rail-panel[open]>.live-rail-content{display:block}
+details.live-rail-panel:not([open])>.live-rail-content{display:none}

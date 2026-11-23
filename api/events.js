@@ -73,7 +73,7 @@ function classify(name='', raw='') {
   if(/art|gallery|painting|photography|craft|creative/.test(s)) return 'Arts & Culture';
   return 'Things to Do';
 }
-function eventFromJson(e,url,fallbackImage='',source='AllEvents',forcedCategory='') {
+function eventFromJson(e,url,fallbackImage='',source='AllEvents') {
   const start=e.startDate||e.startTime; if(!start) return null;
   const location=typeof e.location==='string'?e.location:(e.location?.name || e.location?.address?.streetAddress || 'Local venue');
   const offer=Array.isArray(e.offers)?e.offers[0]:e.offers;
@@ -82,7 +82,7 @@ function eventFromJson(e,url,fallbackImage='',source='AllEvents',forcedCategory=
   const image=Array.isArray(e.image)?e.image[0]:e.image;
   const name=cleanText(e.name||'Event');
   const rawCategory=[e.eventType,e.category,e.genre,e.description].filter(Boolean).join(' ');
-  return {id:e.url||url,name,category:forcedCategory||classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),description:cleanText(e.description||e.eventType||''),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
+  return {id:e.url||url,name,category:classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),description:cleanText(e.description||e.eventType||''),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
 }
 async function fetchText(url){
   const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (compatible; TripSphere/1.0)','Accept':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(5500)});
@@ -99,11 +99,11 @@ function collectLinks(html,host='allevents.in',limit=60){
   }
   return links;
 }
-async function fetchDetail(url,start,end,source,forcedCategory=''){
+async function fetchDetail(url,start,end,source){
   try{
     const page=await fetchText(url); const data=parseJsonLd(page);
     for(const item of data){
-      const event=eventFromJson(item,url,ogImage(page),source,forcedCategory);
+      const event=eventFromJson(item,url,ogImage(page),source);
       if(event&&inRange(event.date,start,end)) return event;
     }
   }catch{}
@@ -142,7 +142,7 @@ async function fetchCityPage(city,start,end){
   const results=await Promise.all([...new Set(urls)].map(async url=>{
     try{
       const html=await fetchText(url);
-      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',forcedCategory)).filter(e=>e&&inRange(e.date,start,end));
+      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',100);
       const details=[];
       const detailResults=await Promise.all(links.slice(0,12).map(link=>fetchDetail(link,start,end,'AllEvents')));
@@ -186,28 +186,28 @@ async function fetchCategory(city,start,end,category){
   const pageJobs=[...new Set(urls)].map(async url=>{
     try{
       const html=await fetchText(url);
-      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',label)).filter(e=>e&&inRange(e.date,start,end));
+      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',60);
-      const details=await Promise.all(links.slice(0,8).map(link=>fetchDetail(link,start,end,'AllEvents',label)));
+      const details=await Promise.all(links.slice(0,8).map(link=>fetchDetail(link,start,end,'AllEvents')));
       return [...direct,...details.filter(Boolean)];
     }catch{return []}
   });
   // Keyword discovery runs against the same city slug, so it works for any
   // city supported by AllEvents rather than relying on a Delhi-only dataset.
-  const searchJobs=terms.slice(0,4).map(term=>fetchSearch(city,start,end,term,label));
+  const searchJobs=terms.slice(0,4).map(term=>fetchSearch(city,start,end,term));
   const results=await Promise.all([...pageJobs,...searchJobs]);
   return results.flat().filter(event=>matchesCategory(event,category));
 }
 
-async function fetchSearch(city,start,end,q,forcedCategory=''){
+async function fetchSearch(city,start,end,q){
   const slug=citySlug(city); if(!slug||!q) return [];
   const url=`https://allevents.in/${slug}/${encodeURIComponent(String(q).trim()).replace(/%20/g,'%20')}`;
   try{
     const html=await fetchText(url);
-    const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',forcedCategory)).filter(e=>e&&inRange(e.date,start,end));
+    const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
     const links=collectLinks(html,'allevents.in',80);
     const details=[];
-    const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents',forcedCategory)));
+    const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents')));
     details.push(...detailResults.filter(Boolean));
     return [...direct,...details];
   }catch{return []}
@@ -287,8 +287,10 @@ export default async function handler(req,res){
   }
   // Do not relabel unrelated records just because they came from a category URL.
   combined=combined.filter(event=>matchesCategory(event,category)&&matchesSearch(event,search));
-  if(!combined.length) combined=discoveryFallback(city,start,end,category,search);
+  // Never turn a city-directory URL into a fake event card. Empty results are
+  // returned as an honest empty state in the UI.
   const seen=new Set();
   const events=combined.filter(e=>{const key=`${e.name}|${e.date}|${e.venue}`.toLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,30);
-  return res.status(200).json({live:true,source:'Live public event providers',events,category,search,updatedAt:new Date().toISOString(),message:events.some(e=>!e.directory)?'Live local event listings are available.':'Live city discovery is available; listings are supplied by the public provider.'});
+  const hasEvents=events.length>0;
+  return res.status(200).json({live:hasEvents,source:'Live public event providers',events,category,search,updatedAt:hasEvents?new Date().toISOString():null,message:hasEvents?'Live local event listings are available.':'No matching individual events were returned by the public providers for this city and date range.'});
 }
