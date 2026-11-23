@@ -1,0 +1,15 @@
+import React,{useState} from 'react';
+import {Bell,Download,Users,CheckCircle2,Minus,Plus,X,FileText} from 'lucide-react';
+import {buildItineraryText} from '@/service/TripPlanning';
+export default function SmartTools({trip}){
+ const [alert,setAlert]=useState(false);const [people,setPeople]=useState(2);const [expense,setExpense]=useState('');const [downloadOpen,setDownloadOpen]=useState(false);
+ const download=(format='txt')=>{const text=buildItineraryText(trip);const payload=format==='json'?JSON.stringify(trip,null,2):text;const blob=new Blob([payload],{type:format==='json'?'application/json':'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`tripsphere-itinerary.${format}`;a.click();setTimeout(()=>URL.revokeObjectURL(url),500);setDownloadOpen(false)};
+ return <section className="section-block smart-tools-section"><div className="section-title"><div><div className="section-kicker">TRIP MANAGEMENT</div><h2>Smart trip tools</h2><span>Keep the plan useful after the itinerary is generated.</span></div></div><div className="smart-tools-grid">
+  <article className="tool-card"><div className="tool-icon"><Bell/></div><div><h3>Price alerts</h3><p>Save a reminder for selected transport or stay prices.</p></div><button className={`tool-action ${alert?'success':''}`} onClick={()=>setAlert(!alert)}>{alert?<><CheckCircle2 size={15}/> Alert active</>:<>Notify me</>}</button></article>
+  <article className="tool-card"><div className="tool-icon"><Users/></div><div><h3>Group planning</h3><p>Keep track of everyone travelling with you.</p></div><div className="stepper"><button onClick={()=>setPeople(Math.max(1,people-1))}><Minus size={15}/></button><b>{people}</b><button onClick={()=>setPeople(people+1)}><Plus size={15}/></button></div></article>
+  <article className="tool-card"><div className="tool-icon"><Users/></div><div><h3>Expense splitter</h3><p>Enter a shared expense and see the equal split instantly.</p></div><div className="expense-control"><input inputMode="decimal" value={expense} onChange={e=>setExpense(e.target.value)} placeholder="₹ amount"/><span>{people} × ₹{((Number(expense)||0)/people).toFixed(0)}</span></div></article>
+  <article className="tool-card"><div className="tool-icon"><Download/></div><div><h3>Download itinerary</h3><p>Export a clean offline copy with your stops and travel details.</p></div><button className="tool-action" onClick={()=>setDownloadOpen(true)}>Choose format</button></article>
+ </div>
+ {downloadOpen&&<div className="download-popover"><div className="download-card"><button className="close-btn" onClick={()=>setDownloadOpen(false)}><X size={16}/></button><div className="tool-icon"><FileText/></div><h3>Download your itinerary</h3><p>Keep a readable offline copy for your phone or laptop.</p><div className="download-actions"><button className="small-btn" onClick={()=>download('txt')}>Text file</button><button className="primary-btn" onClick={()=>download('json')}>JSON backup</button></div></div></div>}
+ </section>;
+}
