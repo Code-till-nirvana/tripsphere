@@ -47,3 +47,18 @@
    temporarily exposes only its city directory rather than individual cards. */
 .event-directory-card { border-style: dashed; }
 .event-directory-card .event-category { letter-spacing: .04em; }
+
+
+/* Collapsible live rail search: collapsed by default to keep route cards compact. */
+.live-rail-panel{padding:0;overflow:hidden}
+.live-rail-toggle{width:100%;display:flex;align-items:center;gap:12px;padding:13px 15px;border:0;background:#f8fbfa;text-align:left;cursor:pointer;color:#18342e}
+.live-rail-toggle:hover{background:#f1f8f5}
+.live-rail-toggle-icon{width:34px;height:34px;flex:0 0 34px;border-radius:11px;background:#e7f6f0;color:#078570;display:grid;place-items:center}
+.live-rail-toggle-copy{min-width:0;display:grid;gap:3px;flex:1}
+.live-rail-toggle-copy b{font-size:11px;font-weight:850}
+.live-rail-toggle-copy small{font-size:9px;color:#7c8984;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-rail-toggle-action{display:inline-flex;align-items:center;gap:6px;color:#087965;font-size:10px;font-weight:850;white-space:nowrap}
+.live-rail-content{padding:0 14px 13px;border-top:1px solid #e5ece8}
+.live-rail-content .live-rail-head{padding-top:12px}
+.live-rail-content .live-rail-head p{margin-top:4px;font-size:9px;color:#7f8c87}
+@media(max-width:560px){.live-rail-toggle{padding:11px;gap:9px}.live-rail-toggle-action{font-size:9px}.live-rail-toggle-copy small{max-width:190px}.live-rail-content{padding:0 10px 10px}}
