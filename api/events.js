@@ -88,21 +88,21 @@ function year(date){return new Date(`${date}T12:00:00`).getFullYear();}
 
 const CATEGORY_MAP={
   all:['parties','music','comedy','exhibitions','performances'],
-  music:'music',
-  arts:'arts',
-  exhibitions:'exhibitions',
-  dance:'dance',
-  festivals:'festivals',
-  sports:'sports',
-  comedy:'comedy',
-  theatre:'theatre',
-  workshops:'workshops',
-  food:'food-drink',
-  business:'business',
-  parties:'parties',
-  performances:'performances',
-  family:'family',
-  nightlife:'nightlife'
+  music:['music','concerts'],
+  arts:['art','arts','things-to-do'],
+  exhibitions:['exhibitions','exhibition'],
+  dance:['dance','parties'],
+  festivals:['festivals','things-to-do'],
+  sports:['sports'],
+  comedy:['comedy'],
+  theatre:['theatre','performances'],
+  workshops:['workshops','things-to-do'],
+  food:['food-drink','food-and-drink','food'],
+  business:['business','business-networking'],
+  parties:['parties'],
+  performances:['performances','theatre'],
+  family:['family','kids','things-to-do'],
+  nightlife:['nightlife','parties']
 };
 
 async function fetchCityPage(city,start,end){
@@ -119,7 +119,7 @@ async function fetchCityPage(city,start,end){
       const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',100);
       const details=[];
-      const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents')));
+      const detailResults=await Promise.all(links.slice(0,12).map(link=>fetchDetail(link,start,end,'AllEvents')));
       details.push(...detailResults.filter(Boolean));
       return [...direct,...details];
     }catch{return []}
@@ -128,36 +128,37 @@ async function fetchCityPage(city,start,end){
 }
 
 const CATEGORY_SEARCH_TERMS={
-  music:['concert','live music','music show'],
-  comedy:['stand-up comedy','comedy show','standup'],
-  arts:['art exhibition','art workshop','cultural event'],
-  exhibitions:['exhibition','expo','art exhibition'],
-  dance:['dance show','dance party','garba'],
-  festivals:['festival','cultural festival'],
-  sports:['sports event','cricket','football'],
-  theatre:['theatre play','stage play','drama'],
-  workshops:['workshop','masterclass','training workshop'],
-  food:['food festival','food tasting','food market'],
-  business:['business networking','business meetup','conference'],
-  family:['family events','kids activities','family activities'],
-  parties:['party','club night','DJ night'],
-  performances:['live performance','stage performance','live show'],
-  nightlife:['nightlife','club night','DJ night']
+  music:['concert','live music','music show','singer','band','orchestra'],
+  comedy:['stand-up comedy','comedy show','standup','comedian'],
+  arts:['art exhibition','art workshop','cultural event','painting','photography'],
+  exhibitions:['exhibition','expo','art exhibition','trade show'],
+  dance:['dance show','dance party','garba','salsa','ballet'],
+  festivals:['festival','cultural festival','fair','mela'],
+  sports:['sports event','cricket','football','badminton','marathon'],
+  theatre:['theatre play','stage play','drama','musical'],
+  workshops:['workshop','masterclass','training workshop','bootcamp'],
+  food:['food festival','food tasting','food market','dining','brunch'],
+  business:['business networking','business meetup','conference','summit','seminar'],
+  family:['family events','kids activities','family activities','children'],
+  parties:['party','club night','DJ night','nightlife'],
+  performances:['live performance','stage performance','live show','concert'],
+  nightlife:['nightlife','club night','DJ night','dance party']
 };
 async function fetchCategory(city,start,end,category){
   const slug=citySlug(city); if(!slug) return [];
-  const cat=CATEGORY_MAP[category]||category||'all';
-  const month=monthName(start);
-  const candidates=cat==='all'?CATEGORY_MAP.all:[cat];
-  const urls=candidates.map(value=>`https://allevents.in/${slug}/${value}--${month}`);
+  const candidates=category==='all'?CATEGORY_MAP.all:(CATEGORY_MAP[category]||[category]);
+  // AllEvents category listings use /city/category paths (for example /delhi/music).
+  // The old --month suffix was not a valid category route and often returned a
+  // generic city page, which then failed category filtering.
+  const urls=candidates.map(value=>`https://allevents.in/${slug}/${value}`);
   const terms=CATEGORY_SEARCH_TERMS[category]||[];
   const jobs=[
     ...[...new Set(urls)].map(async url=>{
       try{
         const html=await fetchText(url);
         const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
-        const links=collectLinks(html,'allevents.in',60);
-        const details=await Promise.all(links.slice(0,3).map(link=>fetchDetail(link,start,end,'AllEvents')));
+        const links=collectLinks(html,'allevents.in',100);
+        const details=await Promise.all(links.slice(0,10).map(link=>fetchDetail(link,start,end,'AllEvents')));
         return [...direct,...details.filter(Boolean)];
       }catch{return []}
     }),
