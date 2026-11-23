@@ -5,7 +5,7 @@ export async function getLiveEvents({ city, startDate, endDate, category = 'all'
   const end = endDate || new Date(Date.now() + 14 * 86400000).toISOString().slice(0,10);
   try {
     const response = await axios.get('/api/events', { params: { city, startDate: start, endDate: end, category, search } });
-    return { events: response.data?.events || [], live: Boolean(response.data?.live), source: response.data?.source || 'Live sources', message: response.data?.message || '' };
+    return { events: response.data?.events || [], live: Boolean(response.data?.live), source: response.data?.source || 'Live sources', message: response.data?.message || '', updatedAt: response.data?.updatedAt || null };
   } catch {
     return { events: [], live: false, source: 'Live event sources unavailable', message: 'Live event providers could not be reached. Try Refresh or another category.' };
   }
