@@ -73,3 +73,12 @@
 .event-empty-actions button{border:1px solid #dce6e1;background:#fff;color:#426057;border-radius:9px;padding:7px 10px;font-size:9px;font-weight:800;cursor:pointer}
 .event-empty-actions button:last-child{background:#0d2b26;border-color:#0d2b26;color:#fff}
 @media(max-width:560px){.event-smart-empty{align-items:flex-start;padding:16px}.event-empty-actions{width:100%}}
+
+/* Native details/summary toggle for reliable, keyboard-accessible rail expansion */
+details.live-rail-panel{display:block;padding:0;overflow:hidden}
+details.live-rail-panel>summary.live-rail-toggle{display:flex;list-style:none;cursor:pointer;user-select:none}
+details.live-rail-panel>summary.live-rail-toggle::-webkit-details-marker{display:none}
+details.live-rail-panel>summary.live-rail-toggle::marker{content:""}
+details.live-rail-panel>summary.live-rail-toggle:focus-visible{outline:2px solid #078570;outline-offset:-3px;border-radius:12px}
+details.live-rail-panel[open]>.live-rail-content{display:block}
+details.live-rail-panel:not([open])>.live-rail-content{display:none}
