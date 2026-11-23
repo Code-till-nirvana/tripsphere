@@ -34,9 +34,21 @@ export default function LiveEvents({trip}){
  const [dateFilter,setDateFilter]=useState('trip');
  const [query,setQuery]=useState(''); const [submittedQuery,setSubmittedQuery]=useState('');
  const [data,setData]=useState({events:[],live:false,source:'',message:''}); const [loading,setLoading]=useState(true);
- const load=async({nextCategory=category,search=submittedQuery}={})=>{
+ const load=async({nextCategory=category,search=submittedQuery,nextDateFilter=dateFilter}={})=>{
    setLoading(true);
-   const result=await getLiveEvents({city,startDate,endDate,category:nextCategory,search});
+   const localDate=new Date();
+   const today=`${localDate.getFullYear()}-${String(localDate.getMonth()+1).padStart(2,'0')}-${String(localDate.getDate()).padStart(2,'0')}`;
+   let requestStart=startDate, requestEnd=endDate;
+   if(nextDateFilter==='today'){requestStart=today;requestEnd=today;}
+   if(nextDateFilter==='weekend'){
+     const day=localDate.getDay();
+     const daysToSaturday=day===6?0:day===0?-1:6-day;
+     const saturday=new Date(localDate);saturday.setDate(localDate.getDate()+daysToSaturday);
+     const sunday=new Date(saturday);sunday.setDate(saturday.getDate()+1);
+     const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+     requestStart=fmt(saturday);requestEnd=fmt(sunday);
+   }
+   const result=await getLiveEvents({city,startDate:requestStart,endDate:requestEnd,category:nextCategory,search});
    setData(result); setLoading(false);
  };
  useEffect(()=>{setCategory('all');setSubmittedQuery('');setQuery('');load({nextCategory:'all',search:''})},[city,startDate,endDate]);
@@ -54,8 +66,9 @@ export default function LiveEvents({trip}){
    }
    return events;
  },[data.events,dateFilter]);
- const chooseCategory=(id)=>{setCategory(id);setSubmittedQuery('');setQuery('');setDateFilter('trip');load({nextCategory:id,search:''})};
- const search=(e)=>{e?.preventDefault();const value=query.trim();setSubmittedQuery(value);setCategory('all');setDateFilter('trip');load({nextCategory:'all',search:value})};
+ const chooseCategory=(id)=>{setCategory(id);setSubmittedQuery('');setQuery('');setDateFilter('trip');load({nextCategory:id,search:'',nextDateFilter:'trip'})};
+ const search=(e)=>{e?.preventDefault();const value=query.trim();setSubmittedQuery(value);setCategory('all');setDateFilter('trip');load({nextCategory:'all',search:value,nextDateFilter:'trip'})};
+ const chooseDateFilter=(value)=>{setDateFilter(value);load({nextDateFilter:value})};
  return <section className="section-block events-section">
    <div className="section-title events-title-row"><div><div className="section-kicker"><Sparkles size={13}/> LIVE EXPERIENCES</div><h2>What's actually happening in {cityName}?</h2><span>Discover real local concerts, stand-up, exhibitions, festivals, sports and more — right inside TripSphere.</span></div><button className="small-btn" onClick={()=>load()} disabled={loading}><RefreshCw size={12} className={loading?'spin':''}/> Refresh</button></div>
 
@@ -63,7 +76,7 @@ export default function LiveEvents({trip}){
     <form className="event-searchbar" onSubmit={search}><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Search events in ${cityName} — e.g. standup, garba, concert...`}/>{query&&<button type="button" className="event-search-clear" onClick={()=>{setQuery('');setSubmittedQuery('');load({nextCategory:category,search:''})}}>×</button>}<button type="submit" className="event-search-submit"><Search size={14}/> Search</button></form>
     <div className="event-filter-label"><SlidersHorizontal size={13}/> Explore categories</div>
     <div className="event-category-scroller">{CATEGORIES.map(({id,label,icon:Icon})=><button key={id} className={`event-category-chip ${category===id&&!submittedQuery?'active':''}`} onClick={()=>chooseCategory(id)}><Icon size={14}/>{label}</button>)}</div>
-    <div className="event-date-filters"><span>When</span><button className={dateFilter==='trip'?'active':''} onClick={()=>setDateFilter('trip')}>My trip dates</button><button className={dateFilter==='today'?'active':''} onClick={()=>setDateFilter('today')}>Today</button><button className={dateFilter==='weekend'?'active':''} onClick={()=>setDateFilter('weekend')}>Weekend</button></div>
+    <div className="event-date-filters"><span>When</span><button className={dateFilter==='trip'?'active':''} onClick={()=>chooseDateFilter('trip')}>My trip dates</button><button className={dateFilter==='today'?'active':''} onClick={()=>chooseDateFilter('today')}>Today</button><button className={dateFilter==='weekend'?'active':''} onClick={()=>chooseDateFilter('weekend')}>Weekend</button></div>
    </div>
 
    <div className="events-results-heading"><div><b>{submittedQuery?`Results for “${submittedQuery}”`:CATEGORIES.find(c=>c.id===category)?.label||'Events'} in {cityName}</b><span>{filtered.some(e=>e.directory) ? 'No individual events returned · city directory link shown' : filtered.length ? `${filtered.length} live event listing${filtered.length===1?'':'s'} shown` : loading ? 'Finding current listings…' : 'Try another category or search'}</span></div>{data.updatedAt&&filtered.some(e=>!e.directory)&&<small><BadgeCheck size={11}/> Updated live</small>}</div>
