@@ -205,7 +205,13 @@ function discoveryFallback(city,start,end,category='all',q=''){
 
 export default async function handler(req,res){
   const q=req.query||{}; const city=q.city||'';
-  const start=q.startDate||new Date().toISOString().slice(0,10); const end=q.endDate||new Date(Date.now()+14*86400000).toISOString().slice(0,10);
+  let start=q.startDate||new Date().toISOString().slice(0,10);
+  let end=q.endDate||new Date(Date.now()+14*86400000).toISOString().slice(0,10);
+  // Guard against the planner occasionally sending trip dates in reverse order.
+  // Provider results must always be filtered against an ascending date window.
+  if(toDate(start)&&toDate(end)&&toDate(end)<toDate(start)){
+    [start,end]=[end,start];
+  }
   const category=String(q.category||'all').toLowerCase(); const search=String(q.search||'').trim();
   let combined=[];
   if(search) {
