@@ -126,27 +126,46 @@ async function fetchCityPage(city,start,end){
   return results.flat();
 }
 
+const CATEGORY_SEARCH_TERMS={
+  music:['concert','live music','music show'],
+  comedy:['stand-up comedy','comedy show','standup'],
+  arts:['art exhibition','art workshop','cultural event'],
+  exhibitions:['exhibition','expo','art exhibition'],
+  dance:['dance show','dance party','garba'],
+  festivals:['festival','cultural festival'],
+  sports:['sports event','cricket','football'],
+  theatre:['theatre play','stage play','drama'],
+  workshops:['workshop','masterclass','training workshop'],
+  food:['food festival','food tasting','food market'],
+  business:['business networking','business meetup','conference'],
+  family:['family events','kids activities','family activities'],
+  parties:['party','club night','DJ night'],
+  performances:['live performance','stage performance','live show'],
+  nightlife:['nightlife','club night','DJ night']
+};
 async function fetchCategory(city,start,end,category){
   const slug=citySlug(city); if(!slug) return [];
   const cat=CATEGORY_MAP[category]||category||'all';
-  const month=monthName(start); const yr=year(start);
+  const month=monthName(start);
   const candidates=cat==='all'?CATEGORY_MAP.all:[cat];
-  const urls=[];
-  for(const c of candidates){
-    urls.push(`https://allevents.in/${slug}/${c}--${month}`);
-  }
-  const pages=await Promise.all([...new Set(urls)].map(async url=>{
-    try{
-      const html=await fetchText(url);
-      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
-      const links=collectLinks(html,'allevents.in',80);
-      const details=[];
-      const detailResults=await Promise.all(links.slice(0,4).map(link=>fetchDetail(link,start,end,'AllEvents')));
-      details.push(...detailResults.filter(Boolean));
-      return [...direct,...details];
-    }catch{return []}
-  }));
-  return pages.flat();
+  const urls=candidates.map(value=>`https://allevents.in/${slug}/${value}--${month}`);
+  const terms=CATEGORY_SEARCH_TERMS[category]||[];
+  const jobs=[
+    ...[...new Set(urls)].map(async url=>{
+      try{
+        const html=await fetchText(url);
+        const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
+        const links=collectLinks(html,'allevents.in',60);
+        const details=await Promise.all(links.slice(0,3).map(link=>fetchDetail(link,start,end,'AllEvents')));
+        return [...direct,...details.filter(Boolean)];
+      }catch{return []}
+    }),
+    ...terms.map(term=>fetchSearch(city,start,end,term))
+  ];
+  // The city feed adds coverage when category-specific provider URLs are sparse.
+  if(category!=='all') jobs.push(fetchCityPage(city,start,end));
+  const results=await Promise.all(jobs);
+  return results.flat().filter(event=>matchesCategory(event,category));
 }
 
 async function fetchSearch(city,start,end,q){
