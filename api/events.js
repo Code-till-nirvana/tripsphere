@@ -10,8 +10,8 @@ function citySlug(city='') {
     gurgaon:'gurgaon',
     noida:'noida',
     thane:'thane',
-    navi-mumbai:'navi-mumbai',
-    'navi mumbai':'navi-mumbai',
+    'navi-mumbai':'navi-mumbai',
+    'navi-mumbai':'navi-mumbai',
     'greater noida':'greater-noida',
     'new york':'new-york',
     'san francisco':'san-francisco',
@@ -204,7 +204,7 @@ async function fetchSearch(city,start,end,q,forcedCategory=''){
   const url=`https://allevents.in/${slug}/${encodeURIComponent(String(q).trim()).replace(/%20/g,'%20')}`;
   try{
     const html=await fetchText(url);
-    const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
+    const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',forcedCategory)).filter(e=>e&&inRange(e.date,start,end));
     const links=collectLinks(html,'allevents.in',80);
     const details=[];
     const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents',forcedCategory)));
