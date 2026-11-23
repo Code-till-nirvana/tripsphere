@@ -54,23 +54,25 @@ function normalizeIndianRail(payload){
 }
 function routeUrl(from,to){const a=String(from).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-');const b=String(to).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-');return `https://www.confirmtkt.com/trains/${a}-to-${b}-train-tickets`;}
 function googleUrl(from,to,date){return `https://www.google.com/search?q=${encodeURIComponent(`${from} to ${to} trains ${date||''}`)}`;}
-async function getJson(url,timeout=9000){const r=await fetch(url,{headers:{Accept:'application/json','User-Agent':'TripSphere/1.0'},signal:AbortSignal.timeout(timeout)});if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}
+async function getJson(url,timeout=6500){const r=await fetch(url,{headers:{Accept:'application/json','User-Agent':'TripSphere/1.0'},signal:AbortSignal.timeout(timeout)});if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}
 export default async function handler(req,res){
  const q=req.query||{};const from=q.from||'';const to=q.to||'';const fromCode=codeFor(from);const toCode=codeFor(to);const date=q.date||new Date().toISOString().slice(0,10);const formatted=formatDate(date);
  const base={from:fromCode||from,to:toCode||to,date:formatted||date,bookingUrl:routeUrl(from,to),searchUrl:googleUrl(from,to,date),updatedAt:new Date().toISOString()};
  if(!fromCode||!toCode||!formatted){return res.status(200).json({...base,live:false,fallback:true,trains:[],source:'Live rail search',error:'Station lookup is not available for this city yet. Use the live route search below.'});}
  if(fromCode===toCode)return res.status(400).json({live:false,trains:[],error:'Origin and destination railway stations must be different.'});
- // Provider 1: public railway information service. It returns scheduled trains between arbitrary supported station codes.
- try{
-   const payload=await getJson(`https://indian-railway-api.onrender.com/api/trains?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}&date=${encodeURIComponent(date)}`);
-   const trains=normalizeIndianRail(payload);
-   if(trains.length)return res.status(200).json({...base,live:false,fallback:true,source:'Indian Railways schedule · live route lookup',trains,inventoryNote:'Scheduled trains found. Seat availability is checked on the booking provider when you continue.'});
- }catch{}
- // Provider 2: live availability search used previously by TripSphere.
- try{
-   const payload=await getJson(`https://traininfo-diik.onrender.com/search?src=${encodeURIComponent(fromCode)}&dst=${encodeURIComponent(toCode)}&date=${encodeURIComponent(formatted)}`);
-   const trains=normalizeConfirm(payload);
-   if(trains.length)return res.status(200).json({...base,live:true,fallback:false,source:'ConfirmTkt live availability',trains});
- }catch{}
- return res.status(200).json({...base,live:false,fallback:true,source:'Live rail route search',trains:[],error:'Live seat inventory is not available from the public feed right now. Use the live route search for the current trains and seats.'});
+ // Query both public feeds concurrently so a sleeping or unavailable provider does not
+ // block the other source for two sequential timeout windows.
+ const [scheduleResult,availabilityResult]=await Promise.allSettled([
+   getJson(`https://indian-railway-api.onrender.com/api/trains?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}&date=${encodeURIComponent(date)}`),
+   getJson(`https://traininfo-diik.onrender.com/search?src=${encodeURIComponent(fromCode)}&dst=${encodeURIComponent(toCode)}&date=${encodeURIComponent(formatted)}`)
+ ]);
+ if(availabilityResult.status==='fulfilled'){
+   const trains=normalizeConfirm(availabilityResult.value);
+   if(trains.length)return res.status(200).json({...base,live:true,fallback:false,source:'Live train availability feed',trains});
+ }
+ if(scheduleResult.status==='fulfilled'){
+   const trains=normalizeIndianRail(scheduleResult.value);
+   if(trains.length)return res.status(200).json({...base,live:false,fallback:true,source:'Indian Railways timetable feed',trains,inventoryNote:'Scheduled trains found. Confirm current seats and fares with the booking provider.'});
+ }
+ return res.status(200).json({...base,live:false,fallback:true,source:'Live rail route search',trains:[],error:'Neither public train feed returned usable results. Check the route and travel date directly with the booking provider.'});
 }
