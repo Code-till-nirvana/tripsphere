@@ -55,7 +55,7 @@ function eventFromJson(e,url,fallbackImage='',source='AllEvents',forcedCategory=
   const image=Array.isArray(e.image)?e.image[0]:e.image;
   const name=cleanText(e.name||'Event');
   const rawCategory=[e.eventType,e.category,e.genre,e.description].filter(Boolean).join(' ');
-  return {id:e.url||url,name,category:classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
+  return {id:e.url||url,name,category:classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),description:cleanText(e.description||e.eventType||''),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
 }
 async function fetchText(url){
   const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (compatible; TripSphere/1.0)','Accept':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(5500)});
