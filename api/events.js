@@ -104,19 +104,19 @@ function year(date){return new Date(`${date}T12:00:00`).getFullYear();}
 const CATEGORY_MAP={
   all:['parties','music','comedy','exhibitions','performances'],
   music:['music','concerts'],
-  arts:['art','arts','things-to-do'],
+  arts:['art','arts'],
   exhibitions:['exhibitions','exhibition'],
   dance:['dance','parties'],
-  festivals:['festivals','things-to-do'],
+  festivals:['festivals'],
   sports:['sports'],
   comedy:['comedy'],
   theatre:['theatre','performances'],
-  workshops:['workshops','things-to-do'],
+  workshops:['workshops'],
   food:['food-drink','food-and-drink','food'],
   business:['business','business-networking'],
   parties:['parties'],
   performances:['performances','theatre'],
-  family:['family','kids','things-to-do'],
+  family:['family','kids'],
   nightlife:['nightlife','parties']
 };
 
