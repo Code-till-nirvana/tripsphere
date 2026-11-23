@@ -34,16 +34,16 @@ function inRange(date,start,end){
 function classify(name='', raw='') {
   const s=`${name} ${raw}`.toLowerCase();
   if(/stand.?up|comedy|humour|humor|comic/.test(s)) return 'Comedy & Stand-up';
+  if(/festival|navratri|dandiya|diwali|holi|christmas|new year|durga puja|onam/.test(s)) return 'Festivals';
+  if(/candlelight|concert|music|live music|jamming|singer|dj|band|orchestra|sufi night/.test(s)) return 'Music';
+  if(/food|wine|dining|brunch|tasting|culinary|food festival|food market/.test(s)) return 'Food & Drink';
+  if(/dance|garba|ballet|salsa|dj night|club night/.test(s)) return 'Dance & Parties';
   if(/exhibition|expo|trade show|fair|shopping|market/.test(s)) return 'Exhibitions';
-  if(/dance|garba|dandiya|ballet|salsa|dj night|club night/.test(s)) return 'Dance & Parties';
-  if(/festival|navratri|diwali|holi|christmas|new year|durga puja|onam/.test(s)) return 'Festivals';
   if(/sport|cricket|football|soccer|marathon|run |badminton|tennis|race|cycling/.test(s)) return 'Sports';
   if(/theatre|theater|play|drama|musical/.test(s)) return 'Theatre & Performing Arts';
   if(/workshop|masterclass|class|training|bootcamp/.test(s)) return 'Workshops';
-  if(/food|wine|dining|brunch|tasting|culinary/.test(s)) return 'Food & Drink';
   if(/business|networking|conference|summit|meetup|seminar/.test(s)) return 'Business & Networking';
   if(/art|gallery|painting|photography|craft|creative/.test(s)) return 'Arts & Culture';
-  if(/concert|music|live |jamming|singer|dj|band|orchestra/.test(s)) return 'Music';
   return 'Things to Do';
 }
 function eventFromJson(e,url,fallbackImage='',source='AllEvents',forcedCategory='') {
@@ -54,7 +54,8 @@ function eventFromJson(e,url,fallbackImage='',source='AllEvents',forcedCategory=
   if(offer?.price!==undefined) price=offer.price===0?'Free':`${offer.priceCurrency||'₹'} ${offer.price}`;
   const image=Array.isArray(e.image)?e.image[0]:e.image;
   const name=cleanText(e.name||'Event');
-  return {id:e.url||url,name,category:forcedCategory||classify(name,e.eventType||''),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
+  const rawCategory=[e.eventType,e.category,e.genre,e.description].filter(Boolean).join(' ');
+  return {id:e.url||url,name,category:classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
 }
 async function fetchText(url){
   const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (compatible; TripSphere/1.0)','Accept':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(5500)});
@@ -137,13 +138,10 @@ async function fetchCategory(city,start,end,category){
   const pages=await Promise.all([...new Set(urls)].map(async url=>{
     try{
       const html=await fetchText(url);
-      // For the All Events view, keep the provider's actual event category instead
-      // of labelling every result as the first category in the aggregate list.
-      const forced=cat==='all'?'':String(candidates[0]||'').replace(/-/g,' ');
-      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',forced)).filter(e=>e&&inRange(e.date,start,end));
+      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',80);
       const details=[];
-      const detailResults=await Promise.all(links.slice(0,4).map(link=>fetchDetail(link,start,end,'AllEvents',forced)));
+      const detailResults=await Promise.all(links.slice(0,4).map(link=>fetchDetail(link,start,end,'AllEvents')));
       details.push(...detailResults.filter(Boolean));
       return [...direct,...details];
     }catch{return []}
@@ -176,6 +174,26 @@ async function fetchBookMyShow(city,start,end){
     details.push(...detailResults.filter(Boolean));
     return [...direct,...details];
   }catch{return []}
+}
+
+
+function matchesCategory(event,category){
+  if(!category||category==='all')return true;
+  const actual=String(event.category||'').toLowerCase();
+  const aliases={
+    music:['music'],comedy:['comedy & stand-up'],arts:['arts & culture'],exhibitions:['exhibitions'],
+    dance:['dance & parties'],festivals:['festivals'],sports:['sports'],theatre:['theatre & performing arts'],
+    workshops:['workshops'],food:['food & drink'],business:['business & networking'],
+    parties:['dance & parties','festivals'],performances:['theatre & performing arts','music'],
+    family:['things to do','festivals','arts & culture','workshops'],nightlife:['dance & parties','music']
+  };
+  return (aliases[category]||[category.replace(/-/g,' ')]).includes(actual);
+}
+function matchesSearch(event,query){
+  const terms=String(query||'').toLowerCase().split(/\s+/).filter(Boolean);
+  if(!terms.length)return true;
+  const haystack=[event.name,event.category,event.venue,event.description].join(' ').toLowerCase();
+  return terms.every(term=>haystack.includes(term));
 }
 
 function discoveryFallback(city,start,end,category='all',q=''){
@@ -211,6 +229,8 @@ export default async function handler(req,res){
     const broad=await Promise.all(broadTerms.map(term=>fetchSearch(city,start,end,term)));
     combined=[...combined,...broad.flat()];
   }
+  // Do not relabel unrelated records just because they came from a category URL.
+  combined=combined.filter(event=>matchesCategory(event,category)&&matchesSearch(event,search));
   if(!combined.length) combined=discoveryFallback(city,start,end,category,search);
   const seen=new Set();
   const events=combined.filter(e=>{const key=`${e.name}|${e.date}|${e.venue}`.toLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,30);
