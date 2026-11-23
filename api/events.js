@@ -3,8 +3,19 @@ function citySlug(city='') {
   // AllEvents uses canonical city slugs, not always the short display name.
   const canonical={
     delhi:'new-delhi',
+    'new-delhi':'new-delhi',
     bengaluru:'bangalore',
     bangalore:'bangalore',
+    gurugram:'gurgaon',
+    gurgaon:'gurgaon',
+    noida:'noida',
+    thane:'thane',
+    navi-mumbai:'navi-mumbai',
+    'navi mumbai':'navi-mumbai',
+    'greater noida':'greater-noida',
+    'new york':'new-york',
+    'san francisco':'san-francisco',
+    'los angeles':'los-angeles',
     mumbai:'mumbai',
     kolkata:'kolkata',
     chennai:'chennai',
@@ -105,14 +116,14 @@ const CATEGORY_MAP={
   all:['parties','music','comedy','exhibitions','performances'],
   music:['music','concerts'],
   arts:['art','arts'],
-  exhibitions:['exhibitions','exhibition'],
-  dance:['dance','parties'],
+  exhibitions:['exhibitions'],
+  dance:['parties','dance'],
   festivals:['festivals'],
   sports:['sports'],
   comedy:['comedy'],
   theatre:['theatre','performances'],
   workshops:['workshops'],
-  food:['food-drink','food-and-drink','food'],
+  food:['food-drinks','food-drink','food-and-drink'],
   business:['business','business-networking'],
   parties:['parties'],
   performances:['performances','theatre'],
@@ -131,7 +142,7 @@ async function fetchCityPage(city,start,end){
   const results=await Promise.all([...new Set(urls)].map(async url=>{
     try{
       const html=await fetchText(url);
-      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
+      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',forcedCategory)).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',100);
       const details=[];
       const detailResults=await Promise.all(links.slice(0,12).map(link=>fetchDetail(link,start,end,'AllEvents')));
@@ -151,12 +162,12 @@ const CATEGORY_SEARCH_TERMS={
   comedy:['stand-up comedy','comedy show','standup','comedian'],
   arts:['art exhibition','art workshop','cultural event','painting','photography'],
   exhibitions:['exhibition','expo','art exhibition','trade show'],
-  dance:['dance show','dance party','garba','salsa','ballet'],
+  dance:['dance party','dance event','dance show','garba','dandiya','salsa','ballet','club night','dj night','party'],
   festivals:['festival','cultural festival','fair','mela'],
   sports:['sports event','cricket','football','badminton','marathon'],
   theatre:['theatre play','stage play','drama','musical'],
   workshops:['workshop','masterclass','training workshop','bootcamp'],
-  food:['food festival','food tasting','food market','dining','brunch'],
+  food:['food festival','food tasting','food market','food and drink','food & drink','dining','brunch','cooking class','wine tasting','street food'],
   business:['business networking','business meetup','conference','summit','seminar'],
   family:['family events','kids activities','family activities','children'],
   parties:['party','club night','DJ night','nightlife'],
@@ -166,30 +177,29 @@ const CATEGORY_SEARCH_TERMS={
 async function fetchCategory(city,start,end,category){
   const slug=citySlug(city); if(!slug) return [];
   const candidates=category==='all'?CATEGORY_MAP.all:(CATEGORY_MAP[category]||[category]);
-  // AllEvents canonical category pages use a date suffix such as
-  // /new-delhi/comedy--december or /new-delhi/comedy--this-weekend.
+  // AllEvents uses canonical category slugs (not UI labels): notably
+  // food-drinks, exhibitions, parties and festivals.
   const month=monthName(start);
   const urls=candidates.map(value=>`https://allevents.in/${slug}/${value}--${month}`);
   const terms=CATEGORY_SEARCH_TERMS[category]||[];
-  const jobs=[
-    ...[...new Set(urls)].map(async url=>{
-      try{
-        const html=await fetchText(url);
-        const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',category==='all'?'':categoryLabel(category))).filter(e=>e&&inRange(e.date,start,end));
-        const links=collectLinks(html,'allevents.in',100);
-        const details=await Promise.all(links.slice(0,10).map(link=>fetchDetail(link,start,end,'AllEvents',category==='all'?'':categoryLabel(category))));
-        return [...direct,...details.filter(Boolean)];
-      }catch{return []}
-    }),
-    ...terms.map(term=>fetchSearch(city,start,end,term))
-  ];
-  // The city feed adds coverage when category-specific provider URLs are sparse.
-  if(category!=='all') jobs.push(fetchCityPage(city,start,end));
-  const results=await Promise.all(jobs);
+  const label=category==='all'?'':categoryLabel(category);
+  const pageJobs=[...new Set(urls)].map(async url=>{
+    try{
+      const html=await fetchText(url);
+      const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',label)).filter(e=>e&&inRange(e.date,start,end));
+      const links=collectLinks(html,'allevents.in',60);
+      const details=await Promise.all(links.slice(0,8).map(link=>fetchDetail(link,start,end,'AllEvents',label)));
+      return [...direct,...details.filter(Boolean)];
+    }catch{return []}
+  });
+  // Keyword discovery runs against the same city slug, so it works for any
+  // city supported by AllEvents rather than relying on a Delhi-only dataset.
+  const searchJobs=terms.slice(0,4).map(term=>fetchSearch(city,start,end,term,label));
+  const results=await Promise.all([...pageJobs,...searchJobs]);
   return results.flat().filter(event=>matchesCategory(event,category));
 }
 
-async function fetchSearch(city,start,end,q){
+async function fetchSearch(city,start,end,q,forcedCategory=''){
   const slug=citySlug(city); if(!slug||!q) return [];
   const url=`https://allevents.in/${slug}/${encodeURIComponent(String(q).trim()).replace(/%20/g,'%20')}`;
   try{
@@ -197,7 +207,7 @@ async function fetchSearch(city,start,end,q){
     const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
     const links=collectLinks(html,'allevents.in',80);
     const details=[];
-    const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents')));
+    const detailResults=await Promise.all(links.slice(0,5).map(link=>fetchDetail(link,start,end,'AllEvents',forcedCategory)));
     details.push(...detailResults.filter(Boolean));
     return [...direct,...details];
   }catch{return []}
