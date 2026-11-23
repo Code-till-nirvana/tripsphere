@@ -1,5 +1,20 @@
 function citySlug(city='') {
-  return String(city).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  const raw=String(city).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  // AllEvents uses canonical city slugs, not always the short display name.
+  const canonical={
+    delhi:'new-delhi',
+    bengaluru:'bangalore',
+    bangalore:'bangalore',
+    mumbai:'mumbai',
+    kolkata:'kolkata',
+    chennai:'chennai',
+    hyderabad:'hyderabad',
+    pune:'pune',
+    ahmedabad:'ahmedabad',
+    jaipur:'jaipur',
+    goa:'goa'
+  };
+  return canonical[raw]||raw;
 }
 function cleanText(value='') {
   return String(value).replace(/<[^>]*>/g,' ').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
@@ -16,7 +31,7 @@ function parseJsonLd(html) {
         if(Array.isArray(x)){x.forEach(walk);return;}
         if(typeof x==='object'){
           const type=Array.isArray(x['@type'])?x['@type']:[x['@type']];
-          if(type.some(t=>String(t).toLowerCase()==='event')) results.push(x);
+          if(type.some(t=>String(t).toLowerCase().endsWith('event'))) results.push(x);
           Object.values(x).forEach(v=>{if(v&&typeof v==='object')walk(v)});
         }
       };
@@ -56,7 +71,7 @@ function eventFromJson(e,url,fallbackImage='',source='AllEvents',forcedCategory=
   const image=Array.isArray(e.image)?e.image[0]:e.image;
   const name=cleanText(e.name||'Event');
   const rawCategory=[e.eventType,e.category,e.genre,e.description].filter(Boolean).join(' ');
-  return {id:e.url||url,name,category:classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),description:cleanText(e.description||e.eventType||''),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
+  return {id:e.url||url,name,category:forcedCategory||classify(name,rawCategory),date:String(start).slice(0,10),time:String(start).length>15?String(start).slice(11,16):'Time TBA',venue:cleanText(location),description:cleanText(e.description||e.eventType||''),price,image:image||fallbackImage,url:e.url||url,preview:false,source};
 }
 async function fetchText(url){
   const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (compatible; TripSphere/1.0)','Accept':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(5500)});
@@ -127,6 +142,10 @@ async function fetchCityPage(city,start,end){
   return results.flat();
 }
 
+function categoryLabel(category){
+ const labels={music:'Music',comedy:'Comedy & Stand-up',arts:'Arts & Culture',exhibitions:'Exhibitions',dance:'Dance & Parties',festivals:'Festivals',sports:'Sports',theatre:'Theatre & Performing Arts',workshops:'Workshops',food:'Food & Drink',business:'Business & Networking',parties:'Dance & Parties',performances:'Theatre & Performing Arts',family:'Family & Kids',nightlife:'Dance & Parties'};
+ return labels[category]||'Things to Do';
+}
 const CATEGORY_SEARCH_TERMS={
   music:['concert','live music','music show','singer','band','orchestra'],
   comedy:['stand-up comedy','comedy show','standup','comedian'],
@@ -147,18 +166,18 @@ const CATEGORY_SEARCH_TERMS={
 async function fetchCategory(city,start,end,category){
   const slug=citySlug(city); if(!slug) return [];
   const candidates=category==='all'?CATEGORY_MAP.all:(CATEGORY_MAP[category]||[category]);
-  // AllEvents category listings use /city/category paths (for example /delhi/music).
-  // The old --month suffix was not a valid category route and often returned a
-  // generic city page, which then failed category filtering.
-  const urls=candidates.map(value=>`https://allevents.in/${slug}/${value}`);
+  // AllEvents canonical category pages use a date suffix such as
+  // /new-delhi/comedy--december or /new-delhi/comedy--this-weekend.
+  const month=monthName(start);
+  const urls=candidates.map(value=>`https://allevents.in/${slug}/${value}--${month}`);
   const terms=CATEGORY_SEARCH_TERMS[category]||[];
   const jobs=[
     ...[...new Set(urls)].map(async url=>{
       try{
         const html=await fetchText(url);
-        const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
+        const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents',category==='all'?'':categoryLabel(category))).filter(e=>e&&inRange(e.date,start,end));
         const links=collectLinks(html,'allevents.in',100);
-        const details=await Promise.all(links.slice(0,10).map(link=>fetchDetail(link,start,end,'AllEvents')));
+        const details=await Promise.all(links.slice(0,10).map(link=>fetchDetail(link,start,end,'AllEvents',category==='all'?'':categoryLabel(category))));
         return [...direct,...details.filter(Boolean)];
       }catch{return []}
     }),
