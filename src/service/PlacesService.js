@@ -70,3 +70,46 @@ export async function discoverDestinationStops({ city, lat, lon, days = 3 }) {
   }
   return unique(results).slice(0, Math.max(days * 3, 6));
 }
+
+
+/**
+ * Discover real accommodation businesses mapped in OpenStreetMap.
+ * Return only named properties with coordinates; never fabricate hotel names.
+ */
+export async function discoverHotels({ city, lat, lon, limit = 8 }) {
+  const safeCity = String(city || '').split(',')[0].trim();
+  const hasCoords = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon));
+  if (!safeCity && !hasCoords) return [];
+  const radius = 12000;
+  const around = hasCoords ? `(around:${radius},${lat},${lon})` : '';
+  const query = hasCoords
+    ? `[out:json][timeout:20];(nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment)$"]${around};nwr["building"="hotel"]${around};);out center tags;`
+    : `[out:json][timeout:20];area["name"~"${safeCity}",i]["boundary"="administrative"]->.a;(nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment)$"](area.a););out center tags;`;
+  try {
+    const { data } = await axios.post(OVERPASS, query, { headers: { 'Content-Type': 'text/plain' }, timeout: 24000 });
+    const seen = new Set();
+    const rows = (data?.elements || []).map((e) => {
+      const tags = e.tags || {};
+      const name = String(tags.name || tags.brand || '').trim();
+      const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const latitude = e.lat ?? e.center?.lat;
+      const longitude = e.lon ?? e.center?.lon;
+      if (!name || !key || seen.has(key) || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      seen.add(key);
+      const address = [tags['addr:housenumber'], tags['addr:street'], tags['addr:suburb'], tags['addr:city'] || safeCity].filter(Boolean).join(', ');
+      const mapsQuery = [name, address || safeCity].filter(Boolean).join(', ');
+      return {
+        id: `osm-${e.type}-${e.id}`, name, address: address || safeCity,
+        lat: latitude, lon: longitude, rating: null, price: null,
+        image_url: tags.image || tags['wikimedia_commons'] || '',
+        map_url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`,
+        source: 'OpenStreetMap'
+      };
+    }).filter(Boolean);
+    return rows.sort((a,b) => {
+      const da = hasCoords ? Math.hypot(a.lat-Number(lat), a.lon-Number(lon)) : 0;
+      const db = hasCoords ? Math.hypot(b.lat-Number(lat), b.lon-Number(lon)) : 0;
+      return da-db;
+    }).slice(0, limit);
+  } catch { return []; }
+}
