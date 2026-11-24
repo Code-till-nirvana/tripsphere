@@ -59,18 +59,19 @@ function inRange(date,start,end){
 }
 function classify(name='', raw='') {
   const s=`${name} ${raw}`.toLowerCase();
+  // Specific categories first: DJ nights are parties, and food festivals are food events.
   if(/stand.?up|comedy|humour|humor|comic/.test(s)) return 'Comedy & Stand-up';
-  if(/family|kids?|children|parent.?child|for all ages/.test(s)) return 'Family & Kids';
-  if(/festival|navratri|dandiya|diwali|holi|christmas|new year|durga puja|onam/.test(s)) return 'Festivals';
-  if(/candlelight|concert|music|live music|jamming|singer|dj|band|orchestra|sufi night/.test(s)) return 'Music';
-  if(/food|wine|dining|brunch|tasting|culinary|food festival|food market/.test(s)) return 'Food & Drink';
-  if(/dance|garba|ballet|salsa|dj night|club night|party|nightlife/.test(s)) return 'Dance & Parties';
-  if(/exhibition|expo|trade show|fair|shopping|market/.test(s)) return 'Exhibitions';
+  if(/exhibition|expo|trade show|art fair|gallery show/.test(s)) return 'Exhibitions';
+  if(/food|wine|dining|brunch|tasting|culinary|restaurant|street food|cooking class/.test(s)) return 'Food & Drink';
+  if(/dance|garba|dandiya|ballet|salsa|dj night|club night|party|nightlife/.test(s)) return 'Dance & Parties';
+  if(/festival|navratri|diwali|holi|christmas|new year|durga puja|onam|mela/.test(s)) return 'Festivals';
+  if(/candlelight|concert|music|live music|jamming|singer|band|orchestra|sufi night/.test(s)) return 'Music';
   if(/sport|cricket|football|soccer|marathon|run |badminton|tennis|race|cycling/.test(s)) return 'Sports';
   if(/theatre|theater|stage play|drama|musical|live performance|stage performance/.test(s)) return 'Theatre & Performing Arts';
   if(/workshop|masterclass|class|training|bootcamp/.test(s)) return 'Workshops';
   if(/business|networking|conference|summit|meetup|seminar/.test(s)) return 'Business & Networking';
-  if(/art|gallery|painting|photography|craft|creative/.test(s)) return 'Arts & Culture';
+  if(/family|kids?|children|parent.?child|for all ages/.test(s)) return 'Family & Kids';
+  if(/art|culture|gallery|painting|photography|craft|creative/.test(s)) return 'Arts & Culture';
   return 'Things to Do';
 }
 function eventFromJson(e,url,fallbackImage='',source='AllEvents') {
