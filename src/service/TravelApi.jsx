@@ -59,7 +59,7 @@ function providerSearch(provider, from, to, date) {
   const origin=cityName(from), destination=cityName(to), day=localDate(date);
   const readableDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
   if(provider==='bus') {
-    const slug=value=>value.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    const slug=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     const redbusDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
     return `https://www.redbus.in/bus-tickets/${slug(origin)}-to-${slug(destination)}?date=${encodeURIComponent(redbusDate)}`;
   }
