@@ -218,3 +218,15 @@ details.live-rail-panel:not([open])>.live-rail-content{display:none}
 .hotel-empty-state{display:flex;flex-direction:column;align-items:flex-start;gap:8px;border:1px solid #e2e9e4;border-radius:16px;padding:20px;background:#fff;color:#64736d;font-size:13px}
 .hotel-empty-state b{color:#20352e;font-size:15px}
 .hotel-empty-state a{display:flex;align-items:center;gap:6px;color:#078570;font-weight:800;text-decoration:none}
+
+/* Keep every itinerary photo in the same frame, regardless of the source image's aspect ratio. */
+.day-grid { align-items:stretch; }
+.itinerary-stop { min-width:0; display:flex; flex-direction:column; }
+.itinerary-stop .place-card { width:100%; height:100%; display:flex; flex-direction:column; }
+.itinerary-stop .place-image-link { display:block; width:100%; height:180px; flex:0 0 180px; overflow:hidden; background:#e8eeeb; }
+.itinerary-stop .place-image-link img { display:block; width:100%; height:100%; object-fit:cover; object-position:center; }
+.itinerary-stop .place-card-body { display:flex; flex:1; flex-direction:column; }
+.itinerary-stop .place-card-body .place-bottom { margin-top:auto; }
+@media (max-width:760px) {
+ .itinerary-stop .place-image-link { height:160px; flex-basis:160px; }
+}
