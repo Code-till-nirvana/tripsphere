@@ -18,7 +18,7 @@ export default function HotelCardItem({hotel,destination,trip}){
  useEffect(()=>{
    let active=true;
    (async()=>{
-     if(hotel?.image_url && /^https?:\\/\\//i.test(hotel.image_url)){setPhoto(hotel.image_url);return;}
+     if(hotel?.image_url && (hotel.image_url.startsWith('https://') || hotel.image_url.startsWith('http://'))){setPhoto(hotel.image_url);return;}
      const img=await getPlaceImage(hotel?.name,destination?.split(',')[0]||'',hotel?.address);
      if(active)setPhoto(img||'');
    })();
