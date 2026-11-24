@@ -1,4 +1,5 @@
 import React from 'react';
+import { ExternalLink } from 'lucide-react';
 import HotelCardItem from './HotelCardItem';
 export default function Hotels({trip}){
  const destination=trip?.userSelection?.location?.label||'';
