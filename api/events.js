@@ -197,7 +197,15 @@ async function fetchCategory(city,start,end,category){
   // city supported by AllEvents rather than relying on a Delhi-only dataset.
   const searchJobs=terms.slice(0,4).map(term=>fetchSearch(city,start,end,term));
   const results=await Promise.all([...pageJobs,...searchJobs]);
-  return results.flat().filter(event=>matchesCategory(event,category));
+  let discovered=results.flat().filter(event=>matchesCategory(event,category));
+  // Category pages can be sparse for smaller cities. As a second pass, inspect
+  // the city's real event feed and classify each event from its own metadata.
+  // This is city-agnostic and never stamps the selected category onto records.
+  if(!discovered.length){
+    const cityFeed=await fetchCityPage(city,start,end);
+    discovered=cityFeed.filter(event=>matchesCategory(event,category));
+  }
+  return discovered;
 }
 
 async function fetchSearch(city,start,end,q){
