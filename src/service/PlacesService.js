@@ -73,43 +73,118 @@ export async function discoverDestinationStops({ city, lat, lon, days = 3 }) {
 
 
 /**
- * Discover real accommodation businesses mapped in OpenStreetMap.
- * Return only named properties with coordinates; never fabricate hotel names.
+ * Discover real accommodation listings for any destination.
+ * Resolve a city centre when coordinates are missing, then query multiple
+ * Overpass mirrors and Nominatim. Only provider-returned named properties
+ * become hotel cards; no synthetic hotel names are generated.
  */
 export async function discoverHotels({ city, lat, lon, limit = 8 }) {
   const safeCity = String(city || '').split(',')[0].trim();
-  const hasCoords = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon));
-  if (!safeCity && !hasCoords) return [];
-  const radius = 12000;
-  const around = hasCoords ? `(around:${radius},${lat},${lon})` : '';
-  const query = hasCoords
-    ? `[out:json][timeout:20];(nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment)$"]${around};nwr["building"="hotel"]${around};);out center tags;`
-    : `[out:json][timeout:20];area["name"~"${safeCity}",i]["boundary"="administrative"]->.a;(nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment)$"](area.a););out center tags;`;
-  try {
-    const { data } = await axios.post(OVERPASS, query, { headers: { 'Content-Type': 'text/plain' }, timeout: 24000 });
-    const seen = new Set();
-    const rows = (data?.elements || []).map((e) => {
-      const tags = e.tags || {};
-      const name = String(tags.name || tags.brand || '').trim();
-      const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const latitude = e.lat ?? e.center?.lat;
-      const longitude = e.lon ?? e.center?.lon;
-      if (!name || !key || seen.has(key) || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-      seen.add(key);
-      const address = [tags['addr:housenumber'], tags['addr:street'], tags['addr:suburb'], tags['addr:city'] || safeCity].filter(Boolean).join(', ');
-      const mapsQuery = [name, address || safeCity].filter(Boolean).join(', ');
-      return {
-        id: `osm-${e.type}-${e.id}`, name, address: address || safeCity,
-        lat: latitude, lon: longitude, rating: null, price: null,
-        image_url: tags.image || tags['wikimedia_commons'] || '',
-        map_url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`,
-        source: 'OpenStreetMap'
-      };
-    }).filter(Boolean);
-    return rows.sort((a,b) => {
-      const da = hasCoords ? Math.hypot(a.lat-Number(lat), a.lon-Number(lon)) : 0;
-      const db = hasCoords ? Math.hypot(b.lat-Number(lat), b.lon-Number(lon)) : 0;
-      return da-db;
-    }).slice(0, limit);
-  } catch { return []; }
+  if (!safeCity && (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon)))) return [];
+
+  let centerLat = Number(lat);
+  let centerLon = Number(lon);
+  let hasCenter = Number.isFinite(centerLat) && Number.isFinite(centerLon) && !(centerLat === 0 && centerLon === 0);
+
+  // City autocomplete entries sometimes contain only a label/city name.
+  // Geocode that destination instead of returning an empty hotel section.
+  if (!hasCenter && safeCity) {
+    try {
+      const { data } = await axios.get(NOMINATIM, {
+        params: { q: safeCity, format: 'jsonv2', limit: 1, addressdetails: 1 },
+        headers: { Accept: 'application/json' }, timeout: 12000
+      });
+      if (data?.[0]) {
+        centerLat = Number(data[0].lat);
+        centerLon = Number(data[0].lon);
+        hasCenter = Number.isFinite(centerLat) && Number.isFinite(centerLon);
+      }
+    } catch { /* try city-name discovery below */ }
+  }
+
+  const normalize = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const seen = new Set();
+  const rows = [];
+  const add = (item) => {
+    const name = String(item?.name || '').trim();
+    const key = normalize(name);
+    const latitude = Number(item?.lat);
+    const longitude = Number(item?.lon);
+    if (!name || !key || seen.has(key) || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    seen.add(key);
+    const address = item.address || safeCity;
+    rows.push({
+      id: item.id || `hotel-${key}`, name, address,
+      lat: latitude, lon: longitude, rating: item.rating || null, price: null,
+      image_url: item.image_url || '',
+      map_url: item.map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([name,address].filter(Boolean).join(', '))}`,
+      source: item.source || 'OpenStreetMap'
+    });
+  };
+
+  const overpassQuery = hasCenter
+    ? `[out:json][timeout:25];(nwr(around:25000,${centerLat},${centerLon})["tourism"~"^(hotel|guest_house|hostel|motel|apartment)$"];nwr(around:25000,${centerLat},${centerLon})["building"="hotel"];);out center tags;`
+    : '';
+  const endpoints = [
+    OVERPASS,
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter'
+  ];
+
+  if (overpassQuery) {
+    for (const endpoint of endpoints) {
+      try {
+        const { data } = await axios.post(endpoint, overpassQuery, {
+          headers: { 'Content-Type': 'text/plain', Accept: 'application/json' }, timeout: 28000
+        });
+        (data?.elements || []).forEach((element) => {
+          const tags = element.tags || {};
+          const name = tags.name || tags.brand || tags.operator;
+          const latitude = element.lat ?? element.center?.lat;
+          const longitude = element.lon ?? element.center?.lon;
+          const address = [
+            tags['addr:housenumber'], tags['addr:street'], tags['addr:suburb'],
+            tags['addr:city'] || safeCity
+          ].filter(Boolean).join(', ');
+          add({
+            id: `osm-${element.type}-${element.id}`, name, lat: latitude, lon: longitude,
+            address, image_url: tags.image || '', source: 'OpenStreetMap'
+          });
+        });
+        if (rows.length >= 3) break;
+      } catch { /* move to another public Overpass instance */ }
+    }
+  }
+
+  // Nominatim is a secondary provider when OSM's Overpass index has sparse
+  // accommodation tags for a city. Results still must be named and mapped.
+  if (rows.length < 3 && safeCity) {
+    for (const searchTerm of [`hotels in ${safeCity}`, `guest houses in ${safeCity}`]) {
+      try {
+        const { data } = await axios.get(NOMINATIM, {
+          params: { q: searchTerm, format: 'jsonv2', limit: 12, addressdetails: 1, extratags: 1 },
+          headers: { Accept: 'application/json' }, timeout: 14000
+        });
+        (data || []).forEach((place) => {
+          const tags = place.extratags || {};
+          const type = `${place.type || ''} ${place.class || ''} ${tags.tourism || ''}`.toLowerCase();
+          if (!/hotel|guest_house|hostel|motel|apartment|accommodation/.test(type)) return;
+          add({
+            id: `nominatim-${place.place_id}`,
+            name: place.name || place.namedetails?.name || place.display_name?.split(',')[0],
+            address: place.display_name || safeCity,
+            lat: place.lat, lon: place.lon, source: 'OpenStreetMap'
+          });
+        });
+        if (rows.length >= 3) break;
+      } catch { /* retain any valid results from Overpass */ }
+    }
+  }
+
+  return rows.sort((a, b) => {
+    if (!hasCenter) return a.name.localeCompare(b.name);
+    const da = Math.hypot(a.lat - centerLat, a.lon - centerLon);
+    const db = Math.hypot(b.lat - centerLat, b.lon - centerLon);
+    return da - db;
+  }).slice(0, limit);
 }
