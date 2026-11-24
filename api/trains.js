@@ -26,7 +26,12 @@ function codeFor(value=''){
   const name=raw.split(',')[0].trim().toLowerCase();
   return STATIONS[name]||null;
 }
-function formatDate(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return null;return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;}
+function formatDate(value){
+ const match=String(value||'').match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+ if(match)return `${match[3]}-${match[2]}-${match[1]}`;
+ const d=new Date(value);if(Number.isNaN(d.getTime()))return null;
+ return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+}
 function normalizeAvailability(av={}){
   return Object.entries(av).map(([cls,v])=>{
     const status=String(v?.availability||v?.status||v?.availabilityStatus||'Check live availability');
@@ -52,12 +57,21 @@ function normalizeIndianRail(payload){
    classes:(t.availableClasses||t.TrainClassList||[]).map(c=>typeof c==='string'?{class:c,status:'Scheduled service',seats:0,fare:t.fare||null,available:false}:{class:c.Name||c.class||c.code||'Class',status:'Scheduled service',seats:0,fare:c.fare||t.fare||null,available:false})
  }));
 }
-function routeUrl(from,to){const a=String(from).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-');const b=String(to).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-');return `https://www.confirmtkt.com/trains/${a}-to-${b}-train-tickets`;}
-function googleUrl(from,to,date){return `https://www.google.com/search?q=${encodeURIComponent(`${from} to ${to} trains ${date||''}`)}`;}
+function routeUrl(from,to,date){
+ const a=String(from).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-');
+ const b=String(to).split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'-');
+ const params=new URLSearchParams();
+ if(date){params.set('date',date);params.set('journeyDate',date);params.set('doj',date);}
+ return `https://www.confirmtkt.com/trains/${a}-to-${b}-train-tickets?${params.toString()}`;
+}
+function googleUrl(from,to,date){
+ const params=new URLSearchParams({q:`${from} to ${to} trains on ${date||''} seat availability`});
+ return `https://www.google.com/search?${params.toString()}`;
+}
 async function getJson(url,timeout=6500){const r=await fetch(url,{headers:{Accept:'application/json','User-Agent':'TripSphere/1.0'},signal:AbortSignal.timeout(timeout)});if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}
 export default async function handler(req,res){
  const q=req.query||{};const from=q.from||'';const to=q.to||'';const fromCode=codeFor(from);const toCode=codeFor(to);const date=q.date||new Date().toISOString().slice(0,10);const formatted=formatDate(date);
- const base={from:fromCode||from,to:toCode||to,date:formatted||date,bookingUrl:routeUrl(from,to),searchUrl:googleUrl(from,to,date),updatedAt:new Date().toISOString()};
+ const base={from:fromCode||from,to:toCode||to,date:formatted||date,bookingUrl:routeUrl(from,to,formatted),searchUrl:googleUrl(from,to,formatted),updatedAt:new Date().toISOString()};
  if(!fromCode||!toCode||!formatted){return res.status(200).json({...base,live:false,fallback:true,trains:[],source:'Live rail search',error:'Station lookup is not available for this city yet. Use the live route search below.'});}
  if(fromCode===toCode)return res.status(400).json({live:false,trains:[],error:'Origin and destination railway stations must be different.'});
  // Query both public feeds concurrently so a sleeping or unavailable provider does not

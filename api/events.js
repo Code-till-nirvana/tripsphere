@@ -59,18 +59,19 @@ function inRange(date,start,end){
 }
 function classify(name='', raw='') {
   const s=`${name} ${raw}`.toLowerCase();
+  // Specific categories first: DJ nights are parties, and food festivals are food events.
   if(/stand.?up|comedy|humour|humor|comic/.test(s)) return 'Comedy & Stand-up';
-  if(/family|kids?|children|parent.?child|for all ages/.test(s)) return 'Family & Kids';
-  if(/festival|navratri|dandiya|diwali|holi|christmas|new year|durga puja|onam/.test(s)) return 'Festivals';
-  if(/candlelight|concert|music|live music|jamming|singer|dj|band|orchestra|sufi night/.test(s)) return 'Music';
-  if(/food|wine|dining|brunch|tasting|culinary|food festival|food market/.test(s)) return 'Food & Drink';
-  if(/dance|garba|ballet|salsa|dj night|club night|party|nightlife/.test(s)) return 'Dance & Parties';
-  if(/exhibition|expo|trade show|fair|shopping|market/.test(s)) return 'Exhibitions';
+  if(/exhibition|expo|trade show|art fair|gallery show/.test(s)) return 'Exhibitions';
+  if(/food|wine|dining|brunch|tasting|culinary|restaurant|street food|cooking class/.test(s)) return 'Food & Drink';
+  if(/dance|garba|dandiya|ballet|salsa|dj night|club night|party|nightlife/.test(s)) return 'Dance & Parties';
+  if(/festival|navratri|diwali|holi|christmas|new year|durga puja|onam|mela/.test(s)) return 'Festivals';
+  if(/candlelight|concert|music|live music|jamming|singer|band|orchestra|sufi night/.test(s)) return 'Music';
   if(/sport|cricket|football|soccer|marathon|run |badminton|tennis|race|cycling/.test(s)) return 'Sports';
   if(/theatre|theater|stage play|drama|musical|live performance|stage performance/.test(s)) return 'Theatre & Performing Arts';
   if(/workshop|masterclass|class|training|bootcamp/.test(s)) return 'Workshops';
   if(/business|networking|conference|summit|meetup|seminar/.test(s)) return 'Business & Networking';
-  if(/art|gallery|painting|photography|craft|creative/.test(s)) return 'Arts & Culture';
+  if(/family|kids?|children|parent.?child|for all ages/.test(s)) return 'Family & Kids';
+  if(/art|culture|gallery|painting|photography|craft|creative/.test(s)) return 'Arts & Culture';
   return 'Things to Do';
 }
 function eventFromJson(e,url,fallbackImage='',source='AllEvents') {
@@ -131,21 +132,23 @@ const CATEGORY_MAP={
   nightlife:['nightlife','parties']
 };
 
-async function fetchCityPage(city,start,end){
+async function fetchCityPage(city,start,end,quick=false){
   const slug=citySlug(city); if(!slug) return [];
-  const urls=[
-    `https://allevents.in/${slug}`,
-    `https://allevents.in/${slug}/events`,
-    `https://allevents.in/${slug}/${monthName(start)}`,
-    `https://allevents.in/${slug}/${monthName(start)}-${year(start)}`
-  ];
+  const urls=quick
+    ? [`https://allevents.in/${slug}/events`]
+    : [
+      `https://allevents.in/${slug}`,
+      `https://allevents.in/${slug}/events`,
+      `https://allevents.in/${slug}/${monthName(start)}`,
+      `https://allevents.in/${slug}/${monthName(start)}-${year(start)}`
+    ];
   const results=await Promise.all([...new Set(urls)].map(async url=>{
     try{
       const html=await fetchText(url);
       const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',100);
       const details=[];
-      const detailResults=await Promise.all(links.slice(0,12).map(link=>fetchDetail(link,start,end,'AllEvents')));
+      const detailResults=await Promise.all(links.slice(0,quick?4:12).map(link=>fetchDetail(link,start,end,'AllEvents')));
       details.push(...detailResults.filter(Boolean));
       return [...direct,...details];
     }catch{return []}
@@ -196,7 +199,15 @@ async function fetchCategory(city,start,end,category){
   // city supported by AllEvents rather than relying on a Delhi-only dataset.
   const searchJobs=terms.slice(0,4).map(term=>fetchSearch(city,start,end,term));
   const results=await Promise.all([...pageJobs,...searchJobs]);
-  return results.flat().filter(event=>matchesCategory(event,category));
+  let discovered=results.flat().filter(event=>matchesCategory(event,category));
+  // Category pages can be sparse for smaller cities. As a second pass, inspect
+  // the city's real event feed and classify each event from its own metadata.
+  // This is city-agnostic and never stamps the selected category onto records.
+  if(!discovered.length){
+    const cityFeed=await fetchCityPage(city,start,end,true);
+    discovered=cityFeed.filter(event=>matchesCategory(event,category));
+  }
+  return discovered;
 }
 
 async function fetchSearch(city,start,end,q){

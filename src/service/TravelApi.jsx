@@ -50,14 +50,38 @@ export function getWeatherLabel(code) {
 }
 
 function cityName(value='') { return String(value).split(',')[0].trim(); }
-function providerSearch(provider, from, to) {
-  const a=encodeURIComponent(cityName(from)); const b=encodeURIComponent(cityName(to));
-  if(provider==='bus') return `https://www.redbus.in/bus-tickets/${cityName(from).toLowerCase().replace(/\s+/g,'-')}-to-${cityName(to).toLowerCase().replace(/\s+/g,'-')}`;
-  if(provider==='flight') return `https://www.makemytrip.com/flights/`;
-  return `https://www.confirmtkt.com/rbooking/`;
+function localDate(value) {
+  if(!value)return new Date().toISOString().slice(0,10);
+  const d=new Date(`${value}T12:00:00`);
+  return Number.isNaN(d.getTime())?String(value).slice(0,10):d.toISOString().slice(0,10);
+}
+function providerSearch(provider, from, to, date) {
+  const origin=cityName(from), destination=cityName(to), day=localDate(date);
+  const readableDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+  if(provider==='bus') {
+    const slug=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    const redbusDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
+    // redBus reads the onward/DOJ fields; a generic ?date= parameter is ignored.
+    const params=new URLSearchParams({
+      fromCityName:origin,
+      toCityName:destination,
+      onward:redbusDate,
+      doj:redbusDate,
+      srcCountry:'IND',
+      destCountry:'IND',
+      opId:'0',
+      busType:'Any'
+    });
+    return `https://www.redbus.in/bus-tickets/${slug(origin)}-to-${slug(destination)}?${params.toString()}`;
+  }
+  if(provider==='flight') {
+    const query=`Flights from ${origin} to ${destination} on ${readableDate}`;
+    return `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}`;
+  }
+  return 'https://www.confirmtkt.com/rbooking/';
 }
 
-export function buildTransportOptions(from='Origin', to='Destination', originCoords=null, destinationCoords=null) {
+export function buildTransportOptions(from='Origin', to='Destination', originCoords=null, destinationCoords=null, travelDate) {
   const lat1 = Number(originCoords?.lat), lon1 = Number(originCoords?.lng), lat2 = Number(destinationCoords?.lat), lon2 = Number(destinationCoords?.lng);
   let km = 650;
   if ([lat1,lon1,lat2,lon2].every(Number.isFinite)) {
@@ -65,13 +89,14 @@ export function buildTransportOptions(from='Origin', to='Destination', originCoo
     const a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2; km=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   }
   const roadKm = Math.round(km * 1.18);
+  const date=localDate(travelDate);
+  const dateLabel=new Date(`${date}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
   return [
-    { mode:'Flight', provider:'Live booking partner', duration:'Live schedule', priceLabel:'Live fare on partner', badge:'Fastest', source:'Live provider', url:providerSearch('flight',from,to) },
-    { mode:'Bus', provider:'Live bus booking partner', duration:'Live schedule', priceLabel:'Live seats & fare on partner', badge:'Value', source:'Live provider', url:providerSearch('bus',from,to) },
+    { mode:'Flight', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check current fare', badge:'Fastest', source:`Travel date · ${dateLabel}`, url:providerSearch('flight',from,to,date) },
+    { mode:'Bus', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check seats & fare', badge:'Value', source:`Travel date · ${dateLabel}`, url:providerSearch('bus',from,to,date) },
     { mode:'Car', provider:'Road route estimate', duration:'Route calculated live', priceLabel:`${roadKm.toLocaleString()} km road route`, badge:'Drive', source:'OSRM route', url:`https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${encodeURIComponent(`${lat1},${lon1};${lat2},${lon2}`)}` }
-  ].map(x=>({...x,from,to,distanceKm:roadKm}));
+  ].map(x=>({...x,from,to,date,distanceKm:roadKm}));
 }
-
 export function buildHotelComparisons(hotels=[]) {
   return hotels.slice(0,4).map((hotel)=>({ ...hotel, sources:[{name:'Trip estimate',price:hotel.price||'Check current rates'},{name:'Hotel direct',price:'View property'}],bestRate:hotel.price||'Check current rates'}));
 }
