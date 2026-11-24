@@ -84,7 +84,7 @@ export async function buildLocalTrip({ location, days, origin, traveler, interes
     hotelSeen.add(key);
     let image = hotel.image_url || '';
     if (image.startsWith('File:')) image = '';
-    if (!/^https?:\\/\\//i.test(image)) image = await getPlaceImage(hotel.name, city, hotel.address);
+    if (!(image.startsWith('https://') || image.startsWith('http://'))) image = await getPlaceImage(hotel.name, city, hotel.address);
     hotelOptions.push({
       ...hotel,
       image_url: image || '',
