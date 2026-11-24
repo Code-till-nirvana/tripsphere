@@ -61,7 +61,18 @@ function providerSearch(provider, from, to, date) {
   if(provider==='bus') {
     const slug=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     const redbusDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-    return `https://www.redbus.in/bus-tickets/${slug(origin)}-to-${slug(destination)}?date=${encodeURIComponent(redbusDate)}`;
+    // redBus reads the onward/DOJ fields; a generic ?date= parameter is ignored.
+    const params=new URLSearchParams({
+      fromCityName:origin,
+      toCityName:destination,
+      onward:redbusDate,
+      doj:redbusDate,
+      srcCountry:'IND',
+      destCountry:'IND',
+      opId:'0',
+      busType:'Any'
+    });
+    return `https://www.redbus.in/bus-tickets/${slug(origin)}-to-${slug(destination)}?${params.toString()}`;
   }
   if(provider==='flight') {
     const query=`Flights from ${origin} to ${destination} on ${readableDate}`;
