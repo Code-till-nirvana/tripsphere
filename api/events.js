@@ -132,21 +132,23 @@ const CATEGORY_MAP={
   nightlife:['nightlife','parties']
 };
 
-async function fetchCityPage(city,start,end){
+async function fetchCityPage(city,start,end,quick=false){
   const slug=citySlug(city); if(!slug) return [];
-  const urls=[
-    `https://allevents.in/${slug}`,
-    `https://allevents.in/${slug}/events`,
-    `https://allevents.in/${slug}/${monthName(start)}`,
-    `https://allevents.in/${slug}/${monthName(start)}-${year(start)}`
-  ];
+  const urls=quick
+    ? [`https://allevents.in/${slug}/events`]
+    : [
+      `https://allevents.in/${slug}`,
+      `https://allevents.in/${slug}/events`,
+      `https://allevents.in/${slug}/${monthName(start)}`,
+      `https://allevents.in/${slug}/${monthName(start)}-${year(start)}`
+    ];
   const results=await Promise.all([...new Set(urls)].map(async url=>{
     try{
       const html=await fetchText(url);
       const direct=parseJsonLd(html).map(e=>eventFromJson(e,url,ogImage(html),'AllEvents')).filter(e=>e&&inRange(e.date,start,end));
       const links=collectLinks(html,'allevents.in',100);
       const details=[];
-      const detailResults=await Promise.all(links.slice(0,12).map(link=>fetchDetail(link,start,end,'AllEvents')));
+      const detailResults=await Promise.all(links.slice(0,quick?4:12).map(link=>fetchDetail(link,start,end,'AllEvents')));
       details.push(...detailResults.filter(Boolean));
       return [...direct,...details];
     }catch{return []}
@@ -202,7 +204,7 @@ async function fetchCategory(city,start,end,category){
   // the city's real event feed and classify each event from its own metadata.
   // This is city-agnostic and never stamps the selected category onto records.
   if(!discovered.length){
-    const cityFeed=await fetchCityPage(city,start,end);
+    const cityFeed=await fetchCityPage(city,start,end,true);
     discovered=cityFeed.filter(event=>matchesCategory(event,category));
   }
   return discovered;
