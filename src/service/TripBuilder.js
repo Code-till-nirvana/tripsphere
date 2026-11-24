@@ -1,4 +1,4 @@
-import { discoverDestinationStops } from '@/service/PlacesService';
+import { discoverDestinationStops, discoverHotels } from '@/service/PlacesService';
 import { getDestinationImage, getPlaceImage } from '@/service/ImageService';
 
 const categoryPlan = ['Culture', 'Food', 'Nature', 'History', 'Shopping', 'Viewpoint', 'Adventure'];
@@ -75,15 +75,28 @@ export async function buildLocalTrip({ location, days, origin, traveler, interes
     itinerary.push({ day: `Day ${day + 1}`, plan });
   }
 
+  const discoveredHotels = await discoverHotels({ city, lat: coords?.lat, lon: coords?.lng, limit: 8 });
+  const hotelOptions = [];
+  const hotelSeen = new Set();
+  for (const hotel of discoveredHotels) {
+    const key = String(hotel.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!key || hotelSeen.has(key)) continue;
+    hotelSeen.add(key);
+    let image = hotel.image_url || '';
+    if (image.startsWith('File:')) image = '';
+    if (!/^https?:\\/\\//i.test(image)) image = await getPlaceImage(hotel.name, city, hotel.address);
+    hotelOptions.push({
+      ...hotel,
+      image_url: image || '',
+      geo_coordinates: `${hotel.lat},${hotel.lon}`,
+      description: 'Verified mapped accommodation listing. Confirm amenities and rates with the property.',
+      amenities: []
+    });
+  }
+
   return {
     destination_image: destinationImage || '/placeholder.jpg',
-    hotel_options: [1,2,3,4].map((n) => ({
-      name: `${city} ${n === 1 ? 'Central' : n === 2 ? 'City Stay' : n === 3 ? 'Grand' : 'Boutique'} Hotel`,
-      address: `Central ${city}`,
-      price: 'Check current rates',
-      image_url: '', geo_coordinates: coords ? `${coords.lat},${coords.lng}` : '', rating: n === 1 ? '4.5' : '4.2',
-      description: `A shortlisted stay option in ${city}.`, amenities: ['Wi‑Fi','Breakfast','24/7 reception']
-    })),
+    hotel_options: hotelOptions,
     itinerary,
     transport_summary: { recommended_mode: 'Compare live options', reason: `Compare available routes from ${origin?.city || 'your origin'} to ${city}.`, estimated_cost: 'Check current rates' },
     tips: [`Plan around the opening hours of the places you selected in ${city}.`, 'Prices and event availability can change; verify before booking.'],
