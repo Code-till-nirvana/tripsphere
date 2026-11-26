@@ -291,11 +291,6 @@ body{color:var(--trip-ink)}
 @media(max-width:900px){.view-shell .transport-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.view-shell .transport-cards{grid-template-columns:minmax(0,1fr)}.view-shell .journey-switch{margin-top:10px}.view-shell .journey-switch button{padding:9px 11px}.view-shell .transport-cards details.live-rail-panel>summary{min-height:120px}.view-shell .transport-cards details.live-rail-panel[open]{grid-column:auto}}
 .view-shell .transport-card:focus-visible{outline:3px solid #a2b9a8;outline-offset:3px}.view-shell .map-empty-state{padding:22px;border:1px dashed var(--trip-line);border-radius:12px;background:#fff;color:var(--trip-muted);font-size:13px}
-/* Keep the expanded rail search body visible; a 100% summary height can push it below the panel. */
-.view-shell .transport-cards details.live-rail-panel[open]{align-self:start}
-.view-shell .transport-cards details.live-rail-panel[open]>summary.live-rail-toggle{height:auto;min-height:0}
-.view-shell .transport-cards details.live-rail-panel[open]>.live-rail-content{height:auto;min-height:0}
-
 
 /* Smart Travel Comparison */
 .view-shell .smart-comparison-section .section-title{margin-bottom:8px}
@@ -371,3 +366,35 @@ body{color:var(--trip-ink)}
 .view-shell .transport-cards details.live-rail-panel[open]{align-self:start}
 .view-shell .transport-cards details.live-rail-panel[open]>summary.live-rail-toggle{height:auto;min-height:0}
 .view-shell .transport-cards details.live-rail-panel[open]>.live-rail-content{height:auto;min-height:0}
+
+/* Smart comparison input and provider details */
+.comparison-class-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border:1px solid var(--trip-line);border-radius:12px;background:#f8faf8}
+.comparison-class-row label,.comparison-provider-card label{font-size:10px;font-weight:800;color:#41534b}
+.comparison-class-row select,.comparison-provider-card select,.comparison-estimator select,.comparison-estimator input{min-width:0;border:1px solid #dce4df;border-radius:9px;background:#fff;padding:8px 9px;color:#34473f;font:inherit;font-size:11px}
+.comparison-class-row>span{color:#788780;font-size:10px}
+.comparison-feed-note{margin:0 0 10px;padding:9px 11px;border-radius:10px;background:#fff8e9;color:#765d27;font-size:10px;line-height:1.45}
+.comparison-tools{margin-top:22px}
+.comparison-cost-breakdown{margin-top:10px;border-top:1px solid #edf0ed;padding-top:9px;color:#40564c;font-size:10px}
+.comparison-cost-breakdown summary{cursor:pointer;font-weight:800}
+.comparison-cost-breakdown>div{display:grid;grid-template-columns:1fr auto;gap:6px 15px;margin-top:9px;color:#788780}
+.comparison-cost-breakdown b{color:#34473f;text-align:right}
+.comparison-estimator{display:grid;grid-template-columns:minmax(200px,1fr) minmax(330px,1.5fr) minmax(180px,.9fr);gap:18px;align-items:center;margin-top:16px;padding:17px;border:1px solid var(--trip-line);border-radius:15px;background:linear-gradient(120deg,#f8fbf9,#fff)}
+.comparison-estimator h3{margin:4px 0;color:#18342e;font-size:15px}
+.comparison-estimator p{margin:0;color:#788780;font-size:10px;line-height:1.5}
+.comparison-estimator-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.comparison-estimator-fields label{display:grid;gap:5px;min-width:0;color:#41534b;font-size:9px;font-weight:800}
+.comparison-estimator-fields input,.comparison-estimator-fields select{width:100%;height:38px;box-sizing:border-box}
+.comparison-estimate-result{display:grid;gap:5px;padding:11px;border-radius:11px;background:#eef5f1;color:#53675e;font-size:10px;line-height:1.4}
+.comparison-estimate-result b{color:#18342e;font-size:12px}
+.comparison-provider-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:15px}
+.comparison-provider-card{display:flex;gap:10px;min-width:0;padding:13px;border:1px solid var(--trip-line);border-radius:13px;background:#fff}
+.comparison-provider-icon{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border-radius:10px;background:#eef5f1;color:#205448}
+.comparison-provider-card>div{display:grid;align-content:start;gap:7px;min-width:0}
+.comparison-provider-card b{color:#294239;font-size:11px}
+.comparison-provider-card p{margin:0;color:#788780;font-size:9px;line-height:1.5}
+.comparison-provider-card label{display:flex;align-items:center;justify-content:space-between;gap:7px}
+.comparison-provider-card select{max-width:150px;padding:6px}
+.comparison-provider-card a{display:inline-flex;align-items:center;gap:5px;color:#087965;font-size:10px;font-weight:800;text-decoration:none}
+.comparison-provider-card a:hover{text-decoration:underline}
+@media(max-width:960px){.comparison-estimator{grid-template-columns:1fr}.comparison-provider-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.comparison-estimator-fields{grid-template-columns:1fr}.comparison-provider-grid{grid-template-columns:1fr}.comparison-class-row{align-items:flex-start}.comparison-estimator{padding:13px}}

@@ -17,8 +17,8 @@ const STATIONS = {
   chandigarh:'CDG','amritsar':'ASR','ludhiana':'LDH','jalandhar':'JUC','patiala':'PTA','dehradun':'DDN','haridwar':'HW',
   jabalpur:'JBP','rewa':'REWA','satna':'STA','sagar':'SGO','bhilai':'BIA','raipur':'R','bilaspur':'BSP','rourkela':'ROU',
   jamshedpur:'TATA','guwahati':'GHY','silchar':'SCL','siliguri':'NJP','new jalpaiguri':'NJP','shillong':'GHY',
-  vijayawada:'BZA','nellore':'NLR','guntur':'GNT','warangal':'WL','rajahmundry':'RJY',
-  kochi:'ERS','ernakulam':'ERS','thrissur':'TCR','kottayam':'KTYM','kollam':'QLN'
+  'nellore':'NLR','guntur':'GNT','warangal':'WL','rajahmundry':'RJY',
+  'thrissur':'TCR','kottayam':'KTYM','kollam':'QLN'
 };
 function codeFor(value=''){
   const raw=String(value).trim();
@@ -27,14 +27,15 @@ function codeFor(value=''){
   return STATIONS[name]||null;
 }
 function formatDate(value){
- const match=String(value||'').match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+ const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
  if(match)return `${match[3]}-${match[2]}-${match[1]}`;
  const d=new Date(value);if(Number.isNaN(d.getTime()))return null;
  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 }
 function normalizeAvailability(av={}){
   return Object.entries(av).map(([cls,v])=>{
-    const status=String(v?.availability||v?.status||v?.availabilityStatus||'Check live availability');
+    const rawStatus=v?.availability||v?.status||v?.availabilityStatus;
+    const status=!rawStatus||/check live availability/i.test(String(rawStatus))?'Availability not returned':String(rawStatus);
     const m=status.match(/(?:AVAILABLE-|AVL\s*[-:]?\s*)(\d+)/i); const seats=m?Number(m[1]):0;
     const fare=Number(v?.fare??v?.price??0)||null;
     return {class:cls,status,seats,fare,available:seats>0};
@@ -42,7 +43,7 @@ function normalizeAvailability(av={}){
 }
 function normalizeConfirm(payload){
  const list=payload?.data?.trainList||payload?.trains||payload?.data?.trains||[];
- return list.map((t,i)=>({id:t.trainNumber||t.trainNo||String(i),trainNumber:t.trainNumber||t.trainNo||'',trainName:t.trainName||t.name||'Indian Railways train',departure:t.departureTime||t.departure||t.depTime||'—',arrival:t.arrivalTime||t.arrival||t.arrTime||'—',duration:t.travelTime||t.duration||'—',classes:normalizeAvailability(t.availabilityCache||t.availability||{})}));
+ return list.map((t,i)=>({id:t.trainNumber||t.trainNo||String(i),trainNumber:t.trainNumber||t.trainNo||'',trainName:t.trainName||t.name||'Indian Railways train',departureStation:t.departureStation||t.fromStationName||t.sourceStation||'',arrivalStation:t.arrivalStation||t.toStationName||t.destinationStation||'',departure:t.departureTime||t.departure||t.depTime||'—',arrival:t.arrivalTime||t.arrival||t.arrTime||'—',duration:t.travelTime||t.duration||'—',classes:normalizeAvailability(t.availabilityCache||t.availability||{})}));
 }
 function normalizeIndianRail(payload){
  const list=payload?.data||payload?.trains||payload?.Trains||payload?.data?.trains||[];
@@ -51,10 +52,12 @@ function normalizeIndianRail(payload){
    id:t.trainNumber||t.TrainNumber||t.trainNo||String(i),
    trainNumber:t.trainNumber||t.TrainNumber||t.trainNo||'',
    trainName:t.trainName||t.TrainName||t.name||'Indian Railways train',
+   departureStation:t.departureStation||t.FromStationName||t.sourceStation||'',
+   arrivalStation:t.arrivalStation||t.ToStationName||t.destinationStation||'',
    departure:t.departureTime||t.DepartureTime||t.DepTimeFrom||t.departure||'—',
    arrival:t.arrivalTime||t.ArrivalTime||t.ArrTimeTo||t.arrival||'—',
    duration:t.duration||t.Duration||t.travelTime||'—',
-   classes:(t.availableClasses||t.TrainClassList||[]).map(c=>typeof c==='string'?{class:c,status:'Scheduled service',seats:0,fare:t.fare||null,available:false}:{class:c.Name||c.class||c.code||'Class',status:'Scheduled service',seats:0,fare:c.fare||t.fare||null,available:false})
+   classes:(t.availableClasses||t.TrainClassList||[]).map(c=>typeof c==='string'?{class:c,status:'Availability not returned',seats:0,fare:t.fare||null,available:false}:{class:c.Name||c.class||c.code||'Class',status:'Availability not returned',seats:0,fare:c.fare||t.fare||null,available:false})
  }));
 }
 function routeUrl(from,to,date){
@@ -70,9 +73,9 @@ function googleUrl(from,to,date){
 }
 async function getJson(url,timeout=6500){const r=await fetch(url,{headers:{Accept:'application/json','User-Agent':'TripSphere/1.0'},signal:AbortSignal.timeout(timeout)});if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}
 export default async function handler(req,res){
- const q=req.query||{};const from=q.from||'';const to=q.to||'';const fromCode=codeFor(from);const toCode=codeFor(to);const date=q.date||new Date().toISOString().slice(0,10);const formatted=formatDate(date);
+ const q=req.query||{};const from=q.from||'';const to=q.to||'';const fromCode=codeFor(from);const toCode=codeFor(to);const indiaDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const date=q.date||indiaDate;const formatted=formatDate(date);
  const base={from:fromCode||from,to:toCode||to,date:formatted||date,bookingUrl:routeUrl(from,to,formatted),searchUrl:googleUrl(from,to,formatted),updatedAt:new Date().toISOString()};
- if(!fromCode||!toCode||!formatted){return res.status(200).json({...base,live:false,fallback:true,trains:[],source:'Live rail search',error:'Station lookup is not available for this city yet. Use the live route search below.'});}
+ if(!fromCode||!toCode||!formatted){return res.status(200).json({...base,live:false,fallback:true,trains:[],source:'Rail schedule search',error:'Station lookup is not available for this city yet. Use the official rail search below.'});}
  if(fromCode===toCode)return res.status(400).json({live:false,trains:[],error:'Origin and destination railway stations must be different.'});
  // Query both public feeds concurrently so a sleeping or unavailable provider does not
  // block the other source for two sequential timeout windows.
@@ -82,11 +85,11 @@ export default async function handler(req,res){
  ]);
  if(availabilityResult.status==='fulfilled'){
    const trains=normalizeConfirm(availabilityResult.value);
-   if(trains.length)return res.status(200).json({...base,live:true,fallback:false,source:'Live train availability feed',trains});
+   if(trains.length)return res.status(200).json({...base,live:false,fallback:true,source:'Third-party train feed (unverified)',inventoryNote:'Returned records are not verified against official station stops, fares or seat inventory. Confirm with the official railway service.',trains});
  }
  if(scheduleResult.status==='fulfilled'){
    const trains=normalizeIndianRail(scheduleResult.value);
-   if(trains.length)return res.status(200).json({...base,live:false,fallback:true,source:'Indian Railways timetable feed',trains,inventoryNote:'Scheduled trains found. Confirm current seats and fares with the booking provider.'});
+   if(trains.length)return res.status(200).json({...base,live:false,fallback:true,source:'Third-party timetable feed (unverified)',trains,inventoryNote:'Schedule records are not verified against official station stops, fares or seat inventory. Confirm with the official railway service.'});
  }
- return res.status(200).json({...base,live:false,fallback:true,source:'Live rail route search',trains:[],error:'Neither public train feed returned usable results. Check the route and travel date directly with the booking provider.'});
+ return res.status(200).json({...base,live:false,fallback:true,source:'Rail route search',trains:[],error:'Neither third-party schedule feed returned usable results. Check the route and travel date directly with the official railway service.'});
 }
