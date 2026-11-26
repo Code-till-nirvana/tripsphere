@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, Search } from 'lucide-react';
 import { searchLocations } from '@/service/LocationService';
@@ -26,5 +27,4 @@ export default function GoogleAddressAutocomplete({ value, onChange, onQueryChan
   </div>;
 }
 
-/* eslint-disable react/prop-types */
 
