@@ -20,6 +20,20 @@ export async function getLiveTrains({ from, to, date }) {
   }
 }
 
+export async function getRoadRoute({ fromCoords, toCoords }) {
+  const fromLat = Number(fromCoords?.lat), fromLng = Number(fromCoords?.lng);
+  const toLat = Number(toCoords?.lat), toLng = Number(toCoords?.lng);
+  if (![fromLat, fromLng, toLat, toLng].every(Number.isFinite)) {
+    return { available: false, reason: 'Choose a matching origin and destination from the location suggestions to calculate a road route.' };
+  }
+  try {
+    const response = await axios.get('/api/route', { params: { fromLat, fromLng, toLat, toLng } });
+    return { available: response.data?.code === 'Ok' && Boolean(response.data?.routes?.[0]), ...response.data };
+  } catch (error) {
+    return { available: false, reason: error?.response?.data?.error || 'Road routing is temporarily unavailable.' };
+  }
+}
+
 export async function getWeatherByPlace(place, days = 7) {
   if (!place) return null;
   try {
@@ -55,7 +69,7 @@ function localDate(value) {
   const d=new Date(`${value}T12:00:00`);
   return Number.isNaN(d.getTime())?String(value).slice(0,10):d.toISOString().slice(0,10);
 }
-function providerSearch(provider, from, to, date) {
+export function buildProviderSearchUrl(provider, from, to, date) {
   const origin=cityName(from), destination=cityName(to), day=localDate(date);
   const readableDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
   if(provider==='bus') {
@@ -92,8 +106,8 @@ export function buildTransportOptions(from='Origin', to='Destination', originCoo
   const date=localDate(travelDate);
   const dateLabel=new Date(`${date}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
   return [
-    { mode:'Flight', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check current fare', badge:'Fastest', source:`Travel date · ${dateLabel}`, url:providerSearch('flight',from,to,date) },
-    { mode:'Bus', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check seats & fare', badge:'Value', source:`Travel date · ${dateLabel}`, url:providerSearch('bus',from,to,date) },
+    { mode:'Flight', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check current fare', badge:'Fastest', source:`Travel date · ${dateLabel}`, url:buildProviderSearchUrl('flight',from,to,date) },
+    { mode:'Bus', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check seats & fare', badge:'Value', source:`Travel date · ${dateLabel}`, url:buildProviderSearchUrl('bus',from,to,date) },
     { mode:'Car', provider:'Road route estimate', duration:'Route calculated live', priceLabel:`${roadKm.toLocaleString()} km road route`, badge:'Drive', source:'OSRM route', url:`https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${encodeURIComponent(`${lat1},${lon1};${lat2},${lon2}`)}` }
   ].map(x=>({...x,from,to,date,distanceKm:roadKm}));
 }
@@ -103,3 +117,4 @@ export function buildHotelComparisons(hotels=[]) {
     .slice(0,4)
     .map((hotel) => ({ ...hotel, bestRate: hotel.bestRate || hotel.price || '' }));
 }
+
