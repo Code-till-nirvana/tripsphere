@@ -264,4 +264,25 @@ body{color:var(--trip-ink)}
 @media(prefers-reduced-motion:reduce){.weather-loading{animation:none}}
 @media(max-width:650px){.view-shell .itinerary-stop .place-card{display:grid;grid-template-columns:112px minmax(0,1fr);min-height:140px}.view-shell .itinerary-stop .place-image-link{height:100%;min-height:140px;flex-basis:auto}.view-shell .place-card-body{min-width:0}.view-shell .place-card p{min-height:0}}
 @media(max-width:380px){.view-shell .itinerary-stop .place-card{grid-template-columns:92px minmax(0,1fr)}}
+
+/* Compact journey direction picker and a balanced four-option transport grid. */
+.view-shell .journey-switch{display:inline-flex;gap:4px;padding:4px;margin:18px 0 4px;background:#f1f4f0;border:1px solid var(--trip-line);border-radius:13px}
+.view-shell .journey-switch button{display:flex;align-items:center;gap:9px;padding:9px 14px;border:0;border-radius:9px;background:transparent;color:var(--trip-muted);font:inherit;font-size:12px;font-weight:750;cursor:pointer}
+.view-shell .journey-switch button small{font-size:10px;font-weight:550;color:inherit;opacity:.8}
+.view-shell .journey-switch button.active{background:#fff;color:var(--trip-ink);box-shadow:0 2px 7px rgba(25,47,38,.09)}
+.view-shell .transport-cards{grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch}
+.view-shell .transport-card{min-width:0;display:flex;flex-direction:column}
+.view-shell .transport-main{min-width:0;display:flex;flex:1;flex-direction:column}
+.view-shell .transport-actions{margin-top:auto;padding-top:12px}
+.view-shell .transport-cards details.live-rail-panel{margin:0;align-self:stretch;padding:0;border-radius:13px;display:block}
+.view-shell .transport-cards details.live-rail-panel>summary{height:100%;min-height:194px;align-items:flex-start;flex-wrap:wrap;align-content:flex-start}
+.view-shell .transport-cards details.live-rail-panel>summary .live-rail-toggle-copy{flex-basis:calc(100% - 48px)}
+.view-shell .transport-cards details.live-rail-panel>summary .live-rail-toggle-action{width:100%;padding:8px 0 0 46px;justify-content:flex-start}
+.view-shell .transport-cards details.live-rail-panel[open]{grid-column:1/-1}
+.view-shell .discovery-photo-wrap{height:164px;position:relative;background:#e9efeb;overflow:hidden}
+.view-shell .discovery-photo-wrap>img{display:block;width:100%;height:100%;object-fit:cover}
+.view-shell .discovery-photo-credit{position:absolute;right:7px;bottom:7px;max-width:calc(100% - 14px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 6px;border-radius:6px;background:rgba(16,35,31,.75);color:#fff;font-size:9px;text-decoration:none}
+.view-shell .discovery-photo{height:164px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#e9efeb;color:#87938e;font-size:10px}
+@media(max-width:900px){.view-shell .transport-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.view-shell .transport-cards{grid-template-columns:minmax(0,1fr)}.view-shell .journey-switch{margin-top:10px}.view-shell .journey-switch button{padding:9px 11px}.view-shell .transport-cards details.live-rail-panel>summary{min-height:120px}.view-shell .transport-cards details.live-rail-panel[open]{grid-column:auto}}
 .view-shell .transport-card:focus-visible{outline:3px solid #a2b9a8;outline-offset:3px}.view-shell .map-empty-state{padding:22px;border:1px dashed var(--trip-line);border-radius:12px;background:#fff;color:var(--trip-muted);font-size:13px}

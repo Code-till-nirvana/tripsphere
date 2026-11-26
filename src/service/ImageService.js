@@ -1,4 +1,5 @@
 const cache = new Map();
+const placePhotoCache = new Map();
 
 function normalize(value = '') { return String(value).replace(/\s+/g, ' ').trim(); }
 function tokens(value=''){ return normalize(value).toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2); }
@@ -23,14 +24,17 @@ async function wikimediaCommonsImage(searchTerm, preferredTerms=[]) {
     if (!response.ok) return '';
     const data = await response.json();
     const pages = Object.values(data?.query?.pages || {});
-    const terms = tokens(preferredTerms.join(' '));
+    const nameTerms = tokens(preferredTerms[0] || searchTerm);
+    const contextTerms = tokens(preferredTerms.slice(1).join(' '));
     const scored = pages.map(page=>{
       const title=page?.title||''; const titleTokens=tokens(title);
-      const score=terms.reduce((n,t)=>n+(titleTokens.includes(t)?3: title.toLowerCase().includes(t)?1:0),0);
+      const nameMatches=nameTerms.filter(term=>titleTokens.includes(term)).length;
+      const contextMatches=contextTerms.filter(term=>titleTokens.includes(term)).length;
+      const score=nameMatches*10+contextMatches;
       const info=page?.imageinfo?.[0];
-      return {score, url:info?.thumburl||info?.url||''};
-    }).filter(x=>x.url).sort((a,b)=>b.score-a.score);
-    return scored[0]?.url || '';
+      return {score,nameMatches,url:info?.thumburl||info?.url||''};
+    }).filter(x=>x.url&&x.nameMatches>0).sort((a,b)=>b.score-a.score);
+    return (scored[0]?.score > 0 ? scored[0]?.url : '') || '';
   } catch { return ''; }
 }
 
@@ -52,6 +56,37 @@ export async function getPlaceImage(name = '', destination = '', extra = '') {
     if(item.q!==place){ image=await wikipediaSummaryImage(place); if(image)break; }
   }
   cache.set(key,image); return image;
+}
+
+export async function getGooglePlacePhoto(name = '', destination = '') {
+  if (!import.meta.env.VITE_GOOGLE_PLACE_API_KEY || !normalize(name)) return null;
+  const key = cacheKey('google-place-photo', name, destination);
+  if (placePhotoCache.has(key)) return placePhotoCache.get(key);
+  let result = null;
+  try {
+    const { loadGoogleMaps } = await import('./GoogleMaps');
+    const maps = await loadGoogleMaps();
+    const { Place } = await maps.importLibrary('places');
+    const { places = [] } = await Place.searchByText({
+      textQuery: `${normalize(name)} ${normalize(destination)}`.trim(),
+      fields: ['displayName', 'photos'],
+      language: 'en',
+      region: 'IN',
+      maxResultCount: 1
+    });
+    const photo = places[0]?.photos?.[0];
+    if (photo) result = {
+      url: photo.getURI({ maxWidth: 960 }),
+      attributions: (photo.authorAttributions || []).map(item => ({
+        name: item.displayName,
+        url: item.uri
+      })).filter(item => item.name)
+    };
+  } catch {
+    // Keep the non-Google image provider available when Places is not enabled.
+  }
+  placePhotoCache.set(key, result);
+  return result;
 }
 
 export async function getWikipediaImage(query = '', fallback = '') {

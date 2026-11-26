@@ -39,6 +39,7 @@ export async function discoverPlaces({ city, lat, lon, category = 'tourist attra
           address: [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']].filter(Boolean).join(' '),
           lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon,
           category: tags.amenity || tags.tourism || tags.historic || tags.leisure || tags.shop || category,
+          image_url: tags.image || '',
           website: tags.website || tags['contact:website'] || '',
           rating: null,
           uri: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tags.name || '')}`

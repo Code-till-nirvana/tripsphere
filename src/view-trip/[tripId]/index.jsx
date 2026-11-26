@@ -16,7 +16,6 @@ import SmartTools from '../components/SmartTools';
 import NeighborhoodDiscovery from '../components/NeighborhoodDiscovery';
 import BookingPanel from '../components/BookingPanel';
 import TripOverview from '../components/TripOverview';
-import TravelTips from '../components/TravelTips';
 import { Link } from 'react-router-dom';
 
 function Viewtrip(){
@@ -24,6 +23,6 @@ function Viewtrip(){
  useEffect(()=>{setLoaded(false);if(!tripId)return;const saved=getTrip(tripId);if(saved)setTrip(saved);else toast('No trip found. This demo stores trips in this browser.');setLoaded(true)},[tripId]);
  const onTripChange=useCallback((next)=>{if(next)setTrip(next)},[]);const onWeather=useCallback(data=>setWeather(data||[]),[]);
  if(!trip)return <div className="view-shell">{loaded?<div className="trip-state"><div className="section-kicker">TRIP UNAVAILABLE</div><h1>We couldn’t find this trip</h1><p>Trips are saved in the browser where they were created. Open your saved trips or start a new plan.</p><div><Link className="primary-btn" to="/my-trips">View my trips</Link><Link className="secondary-btn" to="/create-trip">Plan a trip</Link></div></div>:<div className="trip-state" role="status">Loading your trip…</div>}<Footer/></div>;
- return <div className="view-shell"><InfoSection trip={trip}/><TripOverview trip={trip}/><PlacesToVisit trip={trip} onTripChange={onTripChange} weather={weather}/><MapView trip={trip} onTripChange={onTripChange}/><WeatherWidget trip={trip} onWeather={onWeather}/><TravelTips trip={trip}/><TransportComparison trip={trip}/><LiveEvents trip={trip}/><NeighborhoodDiscovery trip={trip}/><HotelComparison trip={trip}/><Hotels trip={trip}/><LiveTracking trip={trip}/><SmartTools trip={trip}/><BookingPanel trip={trip}/><Footer/></div>;
+ return <div className="view-shell"><InfoSection trip={trip}/><TripOverview trip={trip}/><PlacesToVisit trip={trip} onTripChange={onTripChange} weather={weather}/><MapView trip={trip} onTripChange={onTripChange}/><WeatherWidget trip={trip} onWeather={onWeather}/><TransportComparison trip={trip}/><LiveEvents trip={trip}/><NeighborhoodDiscovery trip={trip}/><HotelComparison trip={trip}/><Hotels trip={trip}/><LiveTracking trip={trip}/><SmartTools trip={trip}/><BookingPanel trip={trip}/><Footer/></div>;
 }
 export default Viewtrip;

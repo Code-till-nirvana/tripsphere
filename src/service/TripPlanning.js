@@ -15,11 +15,13 @@ export function distanceKm(a, b) {
 }
 export function optimizeDayPlan(plan=[]) {
   const remaining=plan.map(item=>({item:{...item},coords:parseCoords(item.geo_coordinates)})).filter(x=>x.item?.place);
-  if(remaining.length<3)return plan;
+  if(remaining.length<2)return remaining.map(({item},i)=>({...item,time:item.time||['Morning','Afternoon','Evening'][i],optimized:true}));
+  if(remaining.filter(x=>x.coords).length<2)return plan;
   const ordered=[]; let current=remaining.shift(); ordered.push(current);
   while(remaining.length){
     const nextIndex=remaining.reduce((best,candidate,index)=>{
-      if(!candidate.coords||!current.coords)return best===-1?index:best;
+      if(!candidate.coords)return best;
+      if(!current.coords)return best===-1?index:best;
       return best===-1||distanceKm(current.coords,candidate.coords)<distanceKm(current.coords,remaining[best].coords)?index:best;
     },-1);
     const next=remaining.splice(nextIndex<0?0:nextIndex,1)[0]; ordered.push(next); current=next;
