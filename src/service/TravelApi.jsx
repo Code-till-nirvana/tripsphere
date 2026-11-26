@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { buildProviderSearchUrl, normalizeCalendarDate } from './TravelSearch.js';
+export { buildProviderSearchUrl } from './TravelSearch.js';
 
 export async function getLiveEvents({ city, startDate, endDate, category = 'all', search = '' }) {
   const start = startDate || new Date().toISOString().slice(0,10);
@@ -13,10 +15,24 @@ export async function getLiveEvents({ city, startDate, endDate, category = 'all'
 
 export async function getLiveTrains({ from, to, date }) {
   try {
-    const response = await axios.get('/api/trains', { params: { from, to, date } });
+    const response = await axios.get('/api/trains', { params: { from, to, date }, timeout: 9000 });
     return response.data;
   } catch (error) {
     return { live: false, trains: [], error: error?.response?.data?.error || 'Live train inventory is unavailable right now.' };
+  }
+}
+
+export async function getRoadRoute({ fromCoords, toCoords }) {
+  const fromLat = Number(fromCoords?.lat), fromLng = Number(fromCoords?.lng);
+  const toLat = Number(toCoords?.lat), toLng = Number(toCoords?.lng);
+  if (![fromLat, fromLng, toLat, toLng].every(Number.isFinite)) {
+    return { available: false, reason: 'Choose a matching origin and destination from the location suggestions to calculate a road route.' };
+  }
+  try {
+    const response = await axios.get('/api/route', { params: { fromLat, fromLng, toLat, toLng }, timeout: 16000 });
+    return { available: response.data?.code === 'Ok' && Boolean(response.data?.routes?.[0]), ...response.data };
+  } catch (error) {
+    return { available: false, reason: error?.response?.data?.error || 'Road routing is temporarily unavailable.' };
   }
 }
 
@@ -49,38 +65,6 @@ export function getWeatherLabel(code) {
   if ([71,73,75,77,85,86].includes(code)) return 'Snow'; if ([95,96,99].includes(code)) return 'Thunderstorm'; return 'Mixed';
 }
 
-function cityName(value='') { return String(value).split(',')[0].trim(); }
-function localDate(value) {
-  if(!value)return new Date().toISOString().slice(0,10);
-  const d=new Date(`${value}T12:00:00`);
-  return Number.isNaN(d.getTime())?String(value).slice(0,10):d.toISOString().slice(0,10);
-}
-function providerSearch(provider, from, to, date) {
-  const origin=cityName(from), destination=cityName(to), day=localDate(date);
-  const readableDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
-  if(provider==='bus') {
-    const slug=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    const redbusDate=new Date(`${day}T12:00:00`).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-    // redBus reads the onward/DOJ fields; a generic ?date= parameter is ignored.
-    const params=new URLSearchParams({
-      fromCityName:origin,
-      toCityName:destination,
-      onward:redbusDate,
-      doj:redbusDate,
-      srcCountry:'IND',
-      destCountry:'IND',
-      opId:'0',
-      busType:'Any'
-    });
-    return `https://www.redbus.in/bus-tickets/${slug(origin)}-to-${slug(destination)}?${params.toString()}`;
-  }
-  if(provider==='flight') {
-    const query=`Flights from ${origin} to ${destination} on ${readableDate}`;
-    return `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}`;
-  }
-  return 'https://www.confirmtkt.com/rbooking/';
-}
-
 export function buildTransportOptions(from='Origin', to='Destination', originCoords=null, destinationCoords=null, travelDate) {
   const lat1 = Number(originCoords?.lat), lon1 = Number(originCoords?.lng), lat2 = Number(destinationCoords?.lat), lon2 = Number(destinationCoords?.lng);
   let km = 650;
@@ -89,11 +73,11 @@ export function buildTransportOptions(from='Origin', to='Destination', originCoo
     const a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2; km=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   }
   const roadKm = Math.round(km * 1.18);
-  const date=localDate(travelDate);
-  const dateLabel=new Date(`${date}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  const date=normalizeCalendarDate(travelDate);
+  const dateLabel=new Date(`${date}T12:00:00+05:30`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'});
   return [
-    { mode:'Flight', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check current fare', badge:'Fastest', source:`Travel date · ${dateLabel}`, url:providerSearch('flight',from,to,date) },
-    { mode:'Bus', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check seats & fare', badge:'Value', source:`Travel date · ${dateLabel}`, url:providerSearch('bus',from,to,date) },
+    { mode:'Flight', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check current fare', badge:'Fastest', source:`Travel date · ${dateLabel}`, url:buildProviderSearchUrl('flight',from,to,date) },
+    { mode:'Bus', provider:'Search this exact route and date', duration:'Live schedule on provider', priceLabel:'Check seats & fare', badge:'Value', source:`Travel date · ${dateLabel}`, url:buildProviderSearchUrl('bus',from,to,date) },
     { mode:'Car', provider:'Road route estimate', duration:'Route calculated live', priceLabel:`${roadKm.toLocaleString()} km road route`, badge:'Drive', source:'OSRM route', url:`https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${encodeURIComponent(`${lat1},${lon1};${lat2},${lon2}`)}` }
   ].map(x=>({...x,from,to,date,distanceKm:roadKm}));
 }
