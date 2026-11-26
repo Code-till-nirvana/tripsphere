@@ -291,4 +291,7 @@ body{color:var(--trip-ink)}
 @media(max-width:900px){.view-shell .transport-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.view-shell .transport-cards{grid-template-columns:minmax(0,1fr)}.view-shell .journey-switch{margin-top:10px}.view-shell .journey-switch button{padding:9px 11px}.view-shell .transport-cards details.live-rail-panel>summary{min-height:120px}.view-shell .transport-cards details.live-rail-panel[open]{grid-column:auto}}
 .view-shell .transport-card:focus-visible{outline:3px solid #a2b9a8;outline-offset:3px}.view-shell .map-empty-state{padding:22px;border:1px dashed var(--trip-line);border-radius:12px;background:#fff;color:var(--trip-muted);font-size:13px}
-
+/* Keep the expanded rail search body visible; a 100% summary height can push it below the panel. */
+.view-shell .transport-cards details.live-rail-panel[open]{align-self:start}
+.view-shell .transport-cards details.live-rail-panel[open]>summary.live-rail-toggle{height:auto;min-height:0}
+.view-shell .transport-cards details.live-rail-panel[open]>.live-rail-content{height:auto;min-height:0}
