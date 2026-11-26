@@ -14,6 +14,13 @@ async function wikipediaSummaryImage(term) {
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!response.ok) return '';
     const data = await response.json();
+    // The REST summary endpoint may resolve a fuzzy or misspelled query to a
+    // different article (for example a person's profile for a place name).
+    // Never use that image unless the returned article title matches the place.
+    const wanted = distinctiveTokens(term);
+    const title = tokens(data?.title || '');
+    const matches = wanted.filter(token => title.includes(token)).length;
+    if (!wanted.length || matches < Math.min(2, wanted.length)) return '';
     return data?.originalimage?.source || data?.thumbnail?.source || '';
   } catch { return ''; }
 }
@@ -141,3 +148,4 @@ export async function getWikipediaImage(query = '', fallback = '') {
 }
 
 export async function getDestinationImage(destination = '') { const city=normalize(destination).split(',')[0]; return getWikipediaImage(city,destination); }
+
