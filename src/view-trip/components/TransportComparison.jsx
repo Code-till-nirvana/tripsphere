@@ -1,53 +1,233 @@
-import React,{useMemo,useState} from 'react';
-import {ArrowRightLeft,CheckCircle2,ChevronDown,ChevronUp,ExternalLink,Plane,TrainFront,BusFront,CarFront,RefreshCw,Ticket} from 'lucide-react';
-import {buildTransportOptions,getLiveTrains} from '@/service/TravelApi';
+import { useEffect, useMemo, useState } from 'react';
+/* eslint-disable react/prop-types */
+import {
+  ArrowLeftRight, BusFront, CarFront, Check, Clock3, ExternalLink,
+  Plane, RefreshCw, Route, TrainFront, Users
+} from 'lucide-react';
+import GoogleAddressAutocomplete from '@/components/custom/GoogleAddressAutocomplete';
+import { buildProviderSearchUrl, getLiveTrains, getRoadRoute } from '@/service/TravelApi';
+import { buildComparisonOptions, formatTravelDuration, rankTravelOptions } from '@/service/TravelComparison';
 
-const iconFor=(mode)=>mode==='Flight'?<Plane/>:mode==='Train'?<TrainFront/>:mode==='Bus'?<BusFront/>:<CarFront/>;
-const addDays=(date,days)=>{const d=new Date(`${date||new Date().toISOString().slice(0,10)}T12:00:00`);d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)};
+const icons = { Train: TrainFront, 'Car / self-drive': CarFront };
+const todayLocal = () => {
+  const date = new Date();
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+};
+const datePlusDays = (dateValue, days) => {
+  const date = new Date(String(dateValue || todayLocal()) + 'T12:00:00');
+  date.setDate(date.getDate() + Number(days || 0));
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+};
+const formatDate = (value) => {
+  if (!value) return 'Date not set';
+  return new Date(value + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+const travellerCount = (value) => {
+  const match = String(value?.label || value || '').match(/\d+/);
+  return Math.max(1, Number(match?.[0]) || 1);
+};
+const placeFromTrip = (value) => value ? {
+  label: value.label || value.city || '',
+  city: value.city || value.label?.split(',')[0] || '',
+  country: value.country || '',
+  location: value.location || null
+} : { label: '', city: '', location: null };
+const updateTypedPlace = (label) => ({ label, city: label.split(',')[0].trim(), location: null });
 
-function TrainResults({from,to,date}){
- const [expanded,setExpanded]=useState(false);
- const [loaded,setLoaded]=useState(false);
- const [state,setState]=useState({loading:false,trains:[],live:false,fallback:false,error:'',bookingUrl:'',searchUrl:'',source:''});
- const load=async()=>{
-   setState(s=>({...s,loading:true,error:''}));
-   try{
-     const r=await getLiveTrains({from,to,date});
-     setState({loading:false,trains:r?.trains||[],live:Boolean(r?.live),fallback:Boolean(r?.fallback),error:r?.error||'',bookingUrl:r?.bookingUrl||'',searchUrl:r?.searchUrl||'',source:r?.source||''});
-   }catch{
-     setState(s=>({...s,loading:false,error:'Train information is temporarily unavailable.'}));
-   }
-   setLoaded(true);
- };
- const handleToggle=(event)=>{
-   const nextOpen=event.currentTarget.open;
-   setExpanded(nextOpen);
-   if(nextOpen&&!loaded&&!state.loading) load();
- };
- const fallback=state.fallback;
- return <details className="live-rail-panel" onToggle={handleToggle}>
-  <summary className="live-rail-toggle">
-   <span className="live-rail-toggle-icon"><Ticket size={15}/></span>
-   <span className="live-rail-toggle-copy"><b>Check available trains</b><small>{from} → {to} · {date ? new Date(`${date}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : 'Select a travel date'}</small></span>
-   <span className="live-rail-toggle-action">{expanded?'Hide trains':'Show trains'} {expanded?<ChevronUp size={17}/>:<ChevronDown size={17}/>}</span>
-  </summary>
-  <div className="live-rail-content">
-   <div className="live-rail-head"><div><span className="section-kicker">LIVE RAIL INVENTORY</span><p>{state.source||'Indian Railways · checking public train feeds'}</p></div><button type="button" className="small-btn" onClick={load} disabled={state.loading}><RefreshCw size={12} className={state.loading?'spin':''}/> Refresh</button></div>
-   {state.loading?<div className="rail-loading">Checking trains for this route and date…</div>:state.trains.length?<div className="rail-results">{state.trains.slice(0,8).map((t,i)=><article className="rail-card" key={t.id||t.trainNumber||i}><div className="rail-main"><div><span className="rail-number">{t.trainNumber||'TRAIN'}</span><h5>{t.trainName}</h5></div><div className="rail-times"><b>{t.departure}</b><span>→</span><b>{t.arrival}</b><small>{t.duration}</small></div></div>{t.classes?.length>0&&<div className="rail-classes">{t.classes.slice(0,5).map((c,j)=><span key={c.class||j} className={c.available?'available':'waitlist'}><b>{c.class}</b> {c.status||'Check live availability'} {!fallback&&c.fare? `· ₹${Number(c.fare).toLocaleString()}`:''}</span>)}</div>}<a className="rail-book" href={state.bookingUrl||'https://www.confirmtkt.com/rbooking/'} target="_blank" rel="noreferrer">{fallback?'Check live seats & book':'Book / verify availability'} <ExternalLink size={12}/></a></article>)}</div>:<div className="rail-search-box"><div><b>No verified train results returned</b><span>{state.error||'The public train feeds did not return a usable timetable. We are not displaying invented train names or seat availability.'}</span></div><div className="rail-search-actions"><a className="small-btn" href={state.bookingUrl||'https://www.confirmtkt.com/rbooking/'} target="_blank" rel="noreferrer">Check trains & seats <ExternalLink size={12}/></a>{state.searchUrl&&<a className="small-btn ghost-btn" href={state.searchUrl} target="_blank" rel="noreferrer">Search route <ExternalLink size={12}/></a>}</div></div>}
-   {fallback&&<div className="rail-fallback-note">These are scheduled services, not confirmed seat availability. Verify seats and fares with the booking provider.</div>}
-   {!state.loading&&<div className="rail-source">{state.live?'Live availability feed responded; seats and fares may change.':state.trains.length?'Timetable results returned; seat availability must be verified with the provider.':'External provider links are available; no live inventory was confirmed.'}</div>}
-  </div>
- </details>
+function Recommendation({ title, result, emptyText, featured = false }) {
+  return <article className={'comparison-recommendation' + (featured ? ' featured' : '')}>
+    <span className="comparison-recommendation-label">{title}</span>
+    {result?.option ? <>
+      <b>{result.option.name}</b>
+      <span>{result.reason}</span>
+    </> : <span>{emptyText}</span>}
+  </article>;
 }
-export default function TransportComparison({trip}){
- const [journey,setJourney]=useState('outbound');const [selected,setSelected]=useState('Outbound-Flight');
- const from=trip?.userSelection?.origin?.label; const to=trip?.userSelection?.location?.label;
- const startDate=trip?.userSelection?.startDate; const days=Number(trip?.userSelection?.noOfDays||1);
- const returnDate=addDays(startDate,Math.max(0,days-1));
- const outbound=useMemo(()=>buildTransportOptions(from,to,trip?.userSelection?.origin?.location,trip?.userSelection?.location?.location,startDate),[from,to,startDate,trip?.userSelection?.origin?.location,trip?.userSelection?.location?.location]);
- const returning=useMemo(()=>buildTransportOptions(to,from,trip?.userSelection?.location?.location,trip?.userSelection?.origin?.location,returnDate),[from,to,returnDate,trip?.userSelection?.origin?.location,trip?.userSelection?.location?.location]);
- const returningMode=journey==='return';const title=returningMode?'Return':'Outbound';const options=returningMode?returning:outbound;
- const routeFrom=returningMode?to:from;const routeTo=returningMode?from:to;const date=returningMode?returnDate:startDate;
- if(!from||!to||!startDate)return null;
- return <section className="section-block transport-section"><div className="section-title"><div><div className="section-kicker">SMART TRANSPORT</div><h2>Plan the journey, not just the destination.</h2><span>Compare one leg at a time to keep your plan in view.</span></div></div><div className="journey-switch" role="group" aria-label="Choose journey direction"><button type="button" aria-pressed={!returningMode} className={!returningMode?'active':''} onClick={()=>{setJourney('outbound');setSelected('Outbound-Flight')}}>Outbound <small>{startDate?new Date(`${startDate}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):''}</small></button><button type="button" aria-pressed={returningMode} className={returningMode?'active':''} onClick={()=>{setJourney('return');setSelected('Return-Flight')}}>Return <small>{new Date(`${returnDate}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</small></button></div><div className="journey-group transport-group"><div className="journey-heading"><div><span className="section-kicker"><ArrowRightLeft size={13}/> {title}</span><h3>{routeFrom} <b>→</b> {routeTo}</h3></div><span className="route-distance">{options[0]?.date?new Date(`${options[0].date}T12:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'Date not set'} · {options[0]?.distanceKm?.toLocaleString()||'—'} km road approx.</span></div><div className="transport-cards">{options.map(option=>{const key=`${title}-${option.mode}`;const isSelected=selected===key;return <article role="button" aria-pressed={isSelected} tabIndex={0} className={`transport-card ${isSelected?'selected':''}`} key={option.mode} onClick={()=>setSelected(key)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();setSelected(key)}}}><div className="transport-icon">{iconFor(option.mode)}</div><div className="transport-main"><div className="transport-top"><div><span className="transport-mode">{option.mode}</span><small>{option.provider}</small></div><span className="transport-badge">{option.badge}</span></div><div className="transport-stats"><span>◷ {option.duration}</span><span>{option.priceLabel}</span><span>{option.source}</span></div><div className="transport-actions"><a href={option.url} target="_blank" rel="noreferrer" className="small-btn" aria-label={`Open ${option.mode} search from ${option.from} to ${option.to} for ${option.date}`} onClick={event=>event.stopPropagation()}>Search {option.mode} <ExternalLink size={12}/></a>{isSelected&&<span className="selected-mark"><CheckCircle2 size={16}/> Selected</span>}</div></div></article>})}<TrainResults from={routeFrom} to={routeTo} date={date}/></div></div></section>;
+
+function OptionCard({ option, tags, travellers }) {
+  const Icon = icons[option.mode] || Route;
+  return <article className="comparison-option">
+    <div className="comparison-option-top">
+      <span className="comparison-option-icon"><Icon size={18}/></span>
+      <div className="comparison-option-heading"><span>{option.mode}</span><h3>{option.name}</h3></div>
+      <span className="comparison-confidence">{option.confidence}</span>
+    </div>
+    {tags.length > 0 && <div className="comparison-tags">{tags.map((tag) => <span key={tag}><Check size={12}/>{tag}</span>)}</div>}
+    <div className="comparison-metrics">
+      <div><small>{option.durationKind === 'published schedule' ? 'Scheduled segment' : 'Estimated road time'}</small><b>{formatTravelDuration(option.durationMinutes)}</b></div>
+      <div><small>Estimated cost per traveller</small><b>{option.perTraveller == null ? 'Not returned' : '₹' + Math.round(option.perTraveller).toLocaleString('en-IN')}</b></div>
+      <div><small>Estimated total ({travellers} {travellers === 1 ? 'traveller' : 'travellers'})</small><b>{option.totalCost == null ? 'Not returned' : '₹' + Math.round(option.totalCost).toLocaleString('en-IN')}</b></div>
+      <div><small>Transfers</small><b>{option.transfers == null ? 'Not returned' : option.transfers}</b></div>
+    </div>
+    {(option.departure || option.arrival || option.distanceKm) && <div className="comparison-route-meta">
+      {(option.departure || option.arrival) && <span><Clock3 size={13}/>{option.departure || '—'} → {option.arrival || '—'}</span>}
+      {option.distanceKm && <span><Route size={13}/>{Math.round(option.distanceKm).toLocaleString()} km</span>}
+    </div>}
+    <p className="comparison-option-note">{option.costLabel}. {option.scopeNote}</p>
+    {option.bookingUrl && <a className="small-btn comparison-book-link" href={option.bookingUrl} target="_blank" rel="noreferrer">Check schedule & booking <ExternalLink size={13}/></a>}
+  </article>;
 }
+
+export default function TransportComparison({ trip }) {
+  const selection = trip?.userSelection || {};
+  const [origin, setOrigin] = useState(() => placeFromTrip(selection.origin));
+  const [destination, setDestination] = useState(() => placeFromTrip(selection.location));
+  const [journey, setJourney] = useState('outbound');
+  const [date, setDate] = useState(selection.startDate || todayLocal());
+  const [travellers, setTravellers] = useState(() => travellerCount(selection.traveler));
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [sort, setSort] = useState('recommended');
+  const [modeFilter, setModeFilter] = useState('all');
+
+  useEffect(() => {
+    const nextOrigin = placeFromTrip(selection.origin);
+    const nextDestination = placeFromTrip(selection.location);
+    const tripDate = selection.startDate || todayLocal();
+    setOrigin(journey === 'return' ? nextDestination : nextOrigin);
+    setDestination(journey === 'return' ? nextOrigin : nextDestination);
+    setDate(journey === 'return' ? datePlusDays(tripDate, Math.max(0, Number(selection.noOfDays || 1) - 1)) : tripDate);
+    setTravellers(travellerCount(selection.traveler));
+    setResult(null);
+    // Reset only when the saved trip changes; direction changes are handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip?.id]);
+
+  const flightSearchUrl = useMemo(() => buildProviderSearchUrl('flight', origin.label, destination.label, date), [origin.label, destination.label, date]);
+  const busSearchUrl = useMemo(() => buildProviderSearchUrl('bus', origin.label, destination.label, date), [origin.label, destination.label, date]);
+  const allOptions = result?.options || [];
+  const recommendations = result?.recommendations || null;
+  const modes = [...new Set(allOptions.map((option) => option.mode))];
+  const visibleOptions = allOptions.filter((option) => modeFilter === 'all' || option.mode === modeFilter).sort((a, b) => {
+    if (sort === 'price') return (a.totalCost ?? Infinity) - (b.totalCost ?? Infinity);
+    if (sort === 'duration') return (a.durationMinutes ?? Infinity) - (b.durationMinutes ?? Infinity);
+    if (sort === 'transfers') return (a.transfers ?? Infinity) - (b.transfers ?? Infinity);
+    if (sort === 'type') return a.mode.localeCompare(b.mode);
+    const featured = recommendations?.tripSphere?.option?.id;
+    return Number(b.id === featured) - Number(a.id === featured) || (a.durationMinutes ?? Infinity) - (b.durationMinutes ?? Infinity);
+  });
+
+  const setDirection = (next) => {
+    if (next === journey) return;
+    const nextOrigin = placeFromTrip(selection.origin);
+    const nextDestination = placeFromTrip(selection.location);
+    const startDate = selection.startDate || todayLocal();
+    setJourney(next);
+    setOrigin(next === 'return' ? nextDestination : nextOrigin);
+    setDestination(next === 'return' ? nextOrigin : nextDestination);
+    setDate(next === 'return' ? datePlusDays(startDate, Math.max(0, Number(selection.noOfDays || 1) - 1)) : startDate);
+    setResult(null);
+  };
+
+  const compare = async (event) => {
+    event?.preventDefault();
+    if (!origin.label.trim() || !destination.label.trim() || !date) return;
+    setLoading(true);
+    setResult(null);
+    const [roadResult, railResult] = await Promise.allSettled([
+      getRoadRoute({ fromCoords: origin.location, toCoords: destination.location }),
+      getLiveTrains({ from: origin.label, to: destination.label, date })
+    ]);
+    const road = roadResult.status === 'fulfilled' ? roadResult.value : { available: false, reason: 'Road routing could not be reached.' };
+    const rail = railResult.status === 'fulfilled' ? railResult.value : { trains: [], error: 'Train schedules could not be reached.' };
+    const roadUrl = origin.location && destination.location
+      ? 'https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=' + encodeURIComponent(origin.location.lat + ',' + origin.location.lng + ';' + destination.location.lat + ',' + destination.location.lng)
+      : '';
+    const options = buildComparisonOptions({
+      route: road,
+      trains: rail?.trains || [],
+      travellers,
+      bookingUrl: rail?.bookingUrl || '',
+      roadUrl
+    });
+    setResult({
+      options,
+      recommendations: rankTravelOptions(options),
+      roadError: road?.reason || '',
+      railError: rail?.error || '',
+      railSource: rail?.source || '',
+      trainSearchUrl: rail?.searchUrl || '',
+      updatedAt: new Date().toISOString()
+    });
+    setLoading(false);
+  };
+
+  return <section className="section-block transport-section smart-comparison-section">
+    <div className="section-title"><div>
+      <div className="section-kicker">SMART TRANSPORT</div>
+      <h2>Smart Travel Comparison</h2>
+      <p className="comparison-tagline">Find the smartest way to reach your destination.</p>
+      <span>Compare every available way to travel and discover what saves you the most time and money.</span>
+    </div></div>
+
+    <div className="journey-switch" role="group" aria-label="Journey direction">
+      <button type="button" aria-pressed={journey === 'outbound'} className={journey === 'outbound' ? 'active' : ''} onClick={() => setDirection('outbound')}>Outbound</button>
+      <button type="button" aria-pressed={journey === 'return'} className={journey === 'return' ? 'active' : ''} onClick={() => setDirection('return')}>Return</button>
+    </div>
+
+    <form className="comparison-search" onSubmit={compare}>
+      <div className="comparison-field"><label htmlFor="comparison-origin">Origin city</label>
+        <GoogleAddressAutocomplete inputId="comparison-origin" value={origin} placeholder="Search origin city" onQueryChange={(value) => setOrigin(updateTypedPlace(value))} onChange={setOrigin}/>
+      </div>
+      <div className="comparison-field"><label htmlFor="comparison-destination">Destination city</label>
+        <GoogleAddressAutocomplete inputId="comparison-destination" value={destination} placeholder="Search destination city" onQueryChange={(value) => setDestination(updateTypedPlace(value))} onChange={setDestination}/>
+      </div>
+      <div className="comparison-field"><label htmlFor="comparison-date">Travel date</label>
+        <input id="comparison-date" type="date" value={date} onChange={(event) => { setDate(event.target.value); setResult(null); }}/>
+      </div>
+      <div className="comparison-field"><label htmlFor="comparison-travellers">Travellers</label>
+        <span className="comparison-number-input"><Users size={16}/><input id="comparison-travellers" type="number" min="1" max="20" value={travellers} onChange={(event) => setTravellers(Math.max(1, Math.min(20, Number(event.target.value) || 1)))}/></span>
+      </div>
+      <button className="primary-btn comparison-submit" type="submit" disabled={loading || !origin.label.trim() || !destination.label.trim() || !date}>
+        {loading ? <><RefreshCw size={15} className="spin"/> Comparing routes…</> : <><Route size={16}/> Compare Travel Options</>}
+      </button>
+    </form>
+    <p className="comparison-form-note">Your saved trip prefilled these details. Edit any field to compare another route. Return date is inferred from the trip length.</p>
+
+    {loading && <div className="comparison-loading" role="status" aria-live="polite">
+      <span className="comparison-skeleton"/><span className="comparison-skeleton"/><span className="comparison-skeleton"/>
+      <p>Checking road routing and returned train schedules…</p>
+    </div>}
+
+    {result && <>
+      <div className="comparison-result-heading">
+        <div><span className="section-kicker"><ArrowLeftRight size={13}/> ROUTE RESULTS</span><h3>{origin.label} <b>→</b> {destination.label}</h3><span>{formatDate(date)} · {travellers} {travellers === 1 ? 'traveller' : 'travellers'}</span></div>
+        <button type="button" className="small-btn" onClick={compare} disabled={loading}><RefreshCw size={13}/> Refresh</button>
+      </div>
+
+      <div className="comparison-recommendations" aria-label="Travel recommendations">
+        <Recommendation title="Fastest option" result={recommendations.fastest} emptyText="No returned option includes a usable journey duration."/>
+        <Recommendation title="Cheapest option" result={recommendations.cheapest} emptyText="Total prices were not returned for every compared option."/>
+        <Recommendation title="Best value" result={recommendations.bestValue} emptyText="Need comparable total prices and durations for at least two options."/>
+        <Recommendation title="Most convenient" result={recommendations.mostConvenient} emptyText="Transfer and access details are not complete enough to rank convenience."/>
+        <Recommendation title="TripSphere recommendation" result={recommendations.tripSphere} emptyText={recommendations.tripSphere.reason} featured/>
+      </div>
+
+      <div className="comparison-options-heading"><div><h3>Returned travel options</h3><span>Travel segment times are shown separately from any door-to-door access time.</span></div>
+        <div className="comparison-controls">
+          <label>Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="recommended">Recommended</option><option value="price">Lowest price</option><option value="duration">Shortest duration</option><option value="transfers">Fewest transfers</option><option value="type">Transport type</option></select></label>
+          <label>Mode <select value={modeFilter} onChange={(event) => setModeFilter(event.target.value)}><option value="all">All returned</option>{modes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}</select></label>
+        </div>
+      </div>
+
+      {visibleOptions.length ? <div className="comparison-option-grid">
+        {visibleOptions.map((option) => <OptionCard key={option.id} option={option} travellers={travellers} tags={[
+          recommendations.fastest?.option?.id === option.id ? 'Fastest' : null,
+          recommendations.cheapest?.option?.id === option.id ? 'Cheapest' : null,
+          recommendations.bestValue?.option?.id === option.id ? 'Best value' : null,
+          recommendations.tripSphere?.option?.id === option.id ? 'TripSphere pick' : null
+        ].filter(Boolean)}/>)}
+      </div> : <div className="comparison-empty"><Route size={20}/><b>No route results were returned for this search.</b><span>{result.roadError || result.railError || 'Try a nearby city or use the external schedule searches below. No transport options are invented.'}</span></div>}
+
+      <div className="comparison-search-links">
+        <div><span className="section-kicker">PROVIDER SEARCHES</span><b>Check additional schedules</b><p>Flight and bus schedules are not supplied by a connected API, so these links open external searches. They are not counted as confirmed route options or included in the rankings.</p></div>
+        <a className="small-btn" href={flightSearchUrl} target="_blank" rel="noreferrer"><Plane size={14}/> Search flights <ExternalLink size={13}/></a>
+        <a className="small-btn" href={busSearchUrl} target="_blank" rel="noreferrer"><BusFront size={14}/> Search buses <ExternalLink size={13}/></a>
+        {result.trainSearchUrl && <a className="small-btn" href={result.trainSearchUrl} target="_blank" rel="noreferrer"><TrainFront size={14}/> Search train route <ExternalLink size={13}/></a>}
+      </div>
+      <p className="comparison-data-note">Prices and seat availability are shown only when returned by the provider. Current results contain {recommendations.coverage.timedOptions} timed option(s) and {recommendations.coverage.pricedOptions} priced option(s). Road estimates exclude fuel, tolls, parking, stops and traffic changes. Results last refreshed {new Date(result.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
+    </>}
+    {!result && !loading && <div className="comparison-placeholder"><Route size={20}/><span>Compare the selected route to see road routing and any train schedules returned by the connected services.</span></div>}
+  </section>;
+}
+
