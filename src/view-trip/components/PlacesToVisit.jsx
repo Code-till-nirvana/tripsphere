@@ -23,7 +23,7 @@ export default function PlacesToVisit({trip,onTripChange,weather=[]}){
  };
 
  const normalizePlace=(value='')=>String(value).toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
- const toStop=(place,i)=>({time:place.time||['Morning','Afternoon','Evening'][i],place:place.place||place.name,details:place.details||place.address||place.category||'Nearby place',image_url:place.image_url||'',geo_coordinates:place.geo_coordinates||(Number.isFinite(Number(place.lat))&&Number.isFinite(Number(place.lon))?`${place.lat},${place.lon}`:''),rating:place.rating||'—',travel_time:place.travel_time||'Nearby',best_time:place.best_time||['Morning','Afternoon','Evening'][i],category:place.category||'Place',map_url:place.map_url||place.uri||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.place||place.name||'')}`});
+ const toStop=(place,i)=>({time:place.time||['Morning','Afternoon','Evening'][i%3],place:place.place||place.name,details:place.details||place.address||place.category||'Nearby place',image_url:/^https?:\/\//i.test(place.image_url||'')?place.image_url:'',geo_coordinates:place.geo_coordinates||(Number.isFinite(Number(place.lat))&&Number.isFinite(Number(place.lon))?`${place.lat},${place.lon}`:''),rating:place.rating||'—',travel_time:place.travel_time||'Nearby',best_time:place.best_time||['Morning','Afternoon','Evening'][i%3],category:place.category||'Place',map_url:place.map_url||place.uri||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.place||place.name||'')}`});
 
  const optimize=(index,plan)=>{
   if(plan.length<2){toast('Add at least two stops before optimizing this route.');return;}
@@ -35,19 +35,45 @@ export default function PlacesToVisit({trip,onTripChange,weather=[]}){
   setRegenerating(index);
   const current=days[index];
   try{
-   const used=new Set(days.flatMap(day=>(day.plan||[]).map(place=>normalizePlace(place.place))));
+   const currentPlan=current?.plan||[];
+   const usedElsewhere=new Set(days.flatMap((day,dayIndex)=>dayIndex===index?[]:(day.plan||[]).map(place=>normalizePlace(place.place))));
+   const currentNames=new Set(currentPlan.map(place=>normalizePlace(place.place)));
+   const excluded=new Set([...usedElsewhere,...currentNames]);
    const point=trip?.userSelection?.location?.location||{};
-   const found=await discoverDestinationStops({city:destination,lat:Number(point.lat)||undefined,lon:Number(point.lng)||undefined,days:1});
-   // Prefer real map results so regeneration remains available without an AI key.
-   let nextPlan=found.filter(place=>place.name&&!used.has(normalizePlace(place.name))).slice(0,3).map(toStop);
-   if(nextPlan.length<2){
-    const prompt=`Regenerate only ${current?.day||`Day ${index+1}`} for a trip to ${destination}. Return JSON only as an object with plan:[{time,place,details,image_url,geo_coordinates,ticket_pricing,rating,travel_time,best_time,category,map_url}]. Suggest real, visitable places and avoid every place already in this trip: ${[...used].join(', ')}. Interests: ${JSON.stringify(trip?.tripData?.meta?.interests||trip?.userSelection?.interests||[])}`;
+   // Search a wider area because a one-day, narrow-radius query can return
+   // fewer fresh places than the three stops required by a complete day.
+   const found=await discoverDestinationStops({city:destination,lat:Number(point.lat)||undefined,lon:Number(point.lng)||undefined,days:14});
+   const uniqueNames=new Set();
+   let nextPlan=found.filter(place=>{
+    const name=normalizePlace(place.name);
+    if(!name||excluded.has(name)||uniqueNames.has(name))return false;
+    uniqueNames.add(name);return true;
+   }).slice(0,3).map(toStop);
+   if(nextPlan.length<3){
+    const prompt=`Regenerate only ${current?.day||`Day ${index+1}`} for a trip to ${destination}. Return JSON only as an object with exactly 3 distinct, real, visitable public places in plan:[{time,place,details,image_url,geo_coordinates,ticket_pricing,rating,travel_time,best_time,category,map_url}]. Do not use placeholder or stock images. Avoid places already in this trip: ${[...excluded].join(', ')}. Interests: ${JSON.stringify(trip?.tripData?.meta?.interests||trip?.userSelection?.interests||[])}`;
     const ai=await generateWithGemini(prompt);
-    const generated=(Array.isArray(ai?.plan)?ai.plan:[]).filter(place=>place?.place&&!used.has(normalizePlace(place.place))&&!nextPlan.some(stop=>normalizePlace(stop.place)===normalizePlace(place.place))).map(toStop);
+    const generated=(Array.isArray(ai?.plan)?ai.plan:[]).filter(place=>{
+     const name=normalizePlace(place?.place);
+     if(!name||excluded.has(name)||uniqueNames.has(name))return false;
+     uniqueNames.add(name);return true;
+    }).map(place=>toStop({...place,image_url:''}));
     nextPlan=[...nextPlan,...generated].slice(0,3);
    }
-   if(!nextPlan.length){toast('No new verified places were found for this day. Try again in a moment.');return;}
-   if(updateDay(index,nextPlan))toast(`${current?.day||`Day ${index+1}`} regenerated and saved.`);
+   const targetCount=Math.max(3,currentPlan.length);
+   if(!nextPlan.length){toast('No new mapped places were found. Your existing day is unchanged; try again in a moment.');return;}
+   // Never replace a complete itinerary with a partial search response. If
+   // discovery finds fewer than three new stops, retain enough of this day's
+   // existing stops to keep the day complete.
+   const addedNames=new Set(nextPlan.map(place=>normalizePlace(place.place)));
+   const retained=currentPlan.filter(place=>!addedNames.has(normalizePlace(place.place)));
+   const completePlan=[...nextPlan,...retained].slice(0,targetCount);
+   if(completePlan.length<targetCount){toast(`Only ${nextPlan.length} new places were found. Your existing day is unchanged so stops are not lost.`);return;}
+   const slots=['Morning','Afternoon','Evening'];
+   const reflowed=completePlan.map((place,i)=>({...place,time:slots[i%3]}));
+   if(updateDay(index,reflowed)){
+    const retainedCount=Math.max(0,reflowed.length-nextPlan.length);
+    toast(retainedCount?`${current?.day||`Day ${index+1}`} updated with ${nextPlan.length} new place${nextPlan.length===1?'':'s'}; kept ${retainedCount} existing stop${retainedCount===1?'':'s'} to keep the day complete.`:`${current?.day||`Day ${index+1}`} regenerated with 3 new stops and saved.`);
+   }
   }catch(error){console.error('Day regeneration failed',error);toast('Day regeneration failed. Check your connection and try again.');}
   finally{setRegenerating(-1);}
  };
@@ -68,3 +94,4 @@ export default function PlacesToVisit({trip,onTripChange,weather=[]}){
   }):<div className="day-empty">There isn’t an itinerary for this trip yet.</div>}
  </section>;
 }
+

@@ -265,6 +265,11 @@ body{color:var(--trip-ink)}
 @media(max-width:650px){.view-shell .itinerary-stop .place-card{display:grid;grid-template-columns:112px minmax(0,1fr);min-height:140px}.view-shell .itinerary-stop .place-image-link{height:100%;min-height:140px;flex-basis:auto}.view-shell .place-card-body{min-width:0}.view-shell .place-card p{min-height:0}}
 @media(max-width:380px){.view-shell .itinerary-stop .place-card{grid-template-columns:92px minmax(0,1fr)}}
 
+/* Clear, labeled fallback for itinerary photos without a verified place image. */
+.itinerary-stop .destination-photo-label{position:absolute;left:9px;bottom:9px;max-width:calc(100% - 82px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:999px;background:rgba(255,255,255,.94);color:#34433c;padding:5px 8px;font-size:9px;font-weight:700}
+.itinerary-stop .place-photo-fallback{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;background:#e9efeb;color:#73827a}
+.itinerary-stop .place-photo-fallback small{font-size:10px}
+
 /* Compact journey direction picker and a balanced four-option transport grid. */
 .view-shell .journey-switch{display:inline-flex;gap:4px;padding:4px;margin:18px 0 4px;background:#f1f4f0;border:1px solid var(--trip-line);border-radius:13px}
 .view-shell .journey-switch button{display:flex;align-items:center;gap:9px;padding:9px 14px;border:0;border-radius:9px;background:transparent;color:var(--trip-muted);font:inherit;font-size:12px;font-weight:750;cursor:pointer}
@@ -286,3 +291,7 @@ body{color:var(--trip-ink)}
 @media(max-width:900px){.view-shell .transport-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.view-shell .transport-cards{grid-template-columns:minmax(0,1fr)}.view-shell .journey-switch{margin-top:10px}.view-shell .journey-switch button{padding:9px 11px}.view-shell .transport-cards details.live-rail-panel>summary{min-height:120px}.view-shell .transport-cards details.live-rail-panel[open]{grid-column:auto}}
 .view-shell .transport-card:focus-visible{outline:3px solid #a2b9a8;outline-offset:3px}.view-shell .map-empty-state{padding:22px;border:1px dashed var(--trip-line);border-radius:12px;background:#fff;color:var(--trip-muted);font-size:13px}
+/* Keep the expanded rail search body visible; a 100% summary height can push it below the panel. */
+.view-shell .transport-cards details.live-rail-panel[open]{align-self:start}
+.view-shell .transport-cards details.live-rail-panel[open]>summary.live-rail-toggle{height:auto;min-height:0}
+.view-shell .transport-cards details.live-rail-panel[open]>.live-rail-content{height:auto;min-height:0}
