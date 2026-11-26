@@ -16,6 +16,42 @@ async function wikipediaSummaryImage(term) {
   } catch { return ''; }
 }
 
+async function wikipediaSearchImage(term) {
+  if (!term) return '';
+  try {
+    const params = new URLSearchParams({ action:'query', generator:'search', gsrsearch:term, gsrnamespace:'0', gsrlimit:'8', prop:'pageimages', piprop:'thumbnail|original', pithumbsize:'1000', format:'json', origin:'*' });
+    const response = await fetch(`https://en.wikipedia.org/w/api.php?${params}`);
+    if (!response.ok) return '';
+    const data = await response.json();
+    const wanted = tokens(term);
+    const pages = Object.values(data?.query?.pages || {}).map(page => {
+      const titleTokens = tokens(page.title || '');
+      const matches = wanted.filter(token => titleTokens.includes(token)).length;
+      return { matches, url:page.original?.source || page.thumbnail?.source || '' };
+    }).filter(page => page.url).sort((a,b)=>b.matches-a.matches);
+    return pages[0]?.matches ? pages[0].url : '';
+  } catch { return ''; }
+}
+
+async function wikipediaNearbyImage(lat, lng, name = '') {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return '';
+  try {
+    const params = new URLSearchParams({ action:'query', generator:'geosearch', ggscoord:`${lat}|${lng}`, ggsradius:'10000', ggslimit:'12', prop:'pageimages', piprop:'thumbnail|original', pithumbsize:'1000', format:'json', origin:'*' });
+    const response = await fetch(`https://en.wikipedia.org/w/api.php?${params}`);
+    if (!response.ok) return '';
+    const data = await response.json();
+    const wanted = tokens(name);
+    const pages = Object.values(data?.query?.pages || {}).map(page => {
+      const titleTokens = tokens(page.title || '');
+      const matches = wanted.filter(token => titleTokens.includes(token)).length;
+      return { matches, distance:page?.coordinates?.[0]?.dist ?? Infinity, url:page.original?.source || page.thumbnail?.source || '' };
+    }).filter(page => page.url).sort((a,b)=>b.matches-a.matches || a.distance-b.distance);
+    // For a nearby substitute require a clear name match rather than showing
+    // an unrelated image from elsewhere in the city.
+    return pages[0]?.matches >= 1 ? pages[0].url : '';
+  } catch { return ''; }
+}
+
 async function wikimediaCommonsImage(searchTerm, preferredTerms=[]) {
   if (!searchTerm) return '';
   try {
@@ -49,6 +85,8 @@ export async function getPlaceImage(name = '', destination = '', extra = '') {
   ];
   let image='';
   for (const item of queries) {
+    image=await wikipediaSearchImage(place);
+    if(image)break;
     image=await wikimediaCommonsImage(item.q,item.terms);
     if(image)break;
     image=await wikipediaSummaryImage(item.q);
@@ -56,6 +94,12 @@ export async function getPlaceImage(name = '', destination = '', extra = '') {
     if(item.q!==place){ image=await wikipediaSummaryImage(place); if(image)break; }
   }
   cache.set(key,image); return image;
+}
+
+export async function getNearbyPlaceImage(name = '', destination = '', lat, lng, imageUrl = '') {
+  if (imageUrl && /^https?:\/\//i.test(imageUrl)) return imageUrl;
+  const placeImage = await getPlaceImage(name, destination);
+  return placeImage || wikipediaNearbyImage(lat, lng, name);
 }
 
 export async function getGooglePlacePhoto(name = '', destination = '') {

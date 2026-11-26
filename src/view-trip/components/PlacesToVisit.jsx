@@ -22,6 +22,9 @@ export default function PlacesToVisit({trip,onTripChange,weather=[]}){
   return true;
  };
 
+ const normalizePlace=(value='')=>String(value).toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+ const toStop=(place,i)=>({time:place.time||['Morning','Afternoon','Evening'][i],place:place.place||place.name,details:place.details||place.address||place.category||'Nearby place',image_url:place.image_url||'',geo_coordinates:place.geo_coordinates||(Number.isFinite(Number(place.lat))&&Number.isFinite(Number(place.lon))?`${place.lat},${place.lon}`:''),rating:place.rating||'—',travel_time:place.travel_time||'Nearby',best_time:place.best_time||['Morning','Afternoon','Evening'][i],category:place.category||'Place',map_url:place.map_url||place.uri||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.place||place.name||'')}`});
+
  const optimize=(index,plan)=>{
   if(plan.length<2){toast('Add at least two stops before optimizing this route.');return;}
   if(plan.filter(place=>place.geo_coordinates).length<2){toast('This itinerary needs coordinates for at least two stops to calculate a route.');return;}
@@ -32,20 +35,16 @@ export default function PlacesToVisit({trip,onTripChange,weather=[]}){
   setRegenerating(index);
   const current=days[index];
   try{
-   const prompt=`Regenerate only ${current?.day||`Day ${index+1}`} for a trip to ${destination}. Return JSON only as an object with plan:[{time,place,details,image_url,geo_coordinates,ticket_pricing,rating,travel_time,best_time,category,map_url}]. Avoid every place already in this trip except the day being replaced. Interests: ${JSON.stringify(trip?.tripData?.meta?.interests||trip?.userSelection?.interests||[])}`;
-   const ai=await generateWithGemini(prompt);
-   let nextPlan=Array.isArray(ai?.plan)?ai.plan.filter(place=>place?.place):[];
-   if(!nextPlan.length){
-    const point=trip?.userSelection?.location?.location||{};
-    const found=await discoverDestinationStops({city:destination,lat:Number(point.lat)||undefined,lon:Number(point.lng)||undefined,days:1});
-    const used=new Set(days.flatMap((day,dayIndex)=>dayIndex===index?[]:(day.plan||[]).map(place=>String(place.place||'').trim().toLowerCase())));
-    nextPlan=found.filter(place=>place.name&&!used.has(String(place.name).trim().toLowerCase())).slice(0,3).map((place,i)=>({
-     time:['Morning','Afternoon','Evening'][i],place:place.name,
-     details:place.address||place.category||'Nearby place',image_url:place.image_url||'',
-     geo_coordinates:Number.isFinite(Number(place.lat))&&Number.isFinite(Number(place.lon))?`${place.lat},${place.lon}`:'',
-     rating:place.rating||'—',travel_time:'Nearby',best_time:['Morning','Afternoon','Evening'][i],
-     category:place.category||'Place',map_url:place.uri||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}`
-    }));
+   const used=new Set(days.flatMap(day=>(day.plan||[]).map(place=>normalizePlace(place.place))));
+   const point=trip?.userSelection?.location?.location||{};
+   const found=await discoverDestinationStops({city:destination,lat:Number(point.lat)||undefined,lon:Number(point.lng)||undefined,days:1});
+   // Prefer real map results so regeneration remains available without an AI key.
+   let nextPlan=found.filter(place=>place.name&&!used.has(normalizePlace(place.name))).slice(0,3).map(toStop);
+   if(nextPlan.length<2){
+    const prompt=`Regenerate only ${current?.day||`Day ${index+1}`} for a trip to ${destination}. Return JSON only as an object with plan:[{time,place,details,image_url,geo_coordinates,ticket_pricing,rating,travel_time,best_time,category,map_url}]. Suggest real, visitable places and avoid every place already in this trip: ${[...used].join(', ')}. Interests: ${JSON.stringify(trip?.tripData?.meta?.interests||trip?.userSelection?.interests||[])}`;
+    const ai=await generateWithGemini(prompt);
+    const generated=(Array.isArray(ai?.plan)?ai.plan:[]).filter(place=>place?.place&&!used.has(normalizePlace(place.place))&&!nextPlan.some(stop=>normalizePlace(stop.place)===normalizePlace(place.place))).map(toStop);
+    nextPlan=[...nextPlan,...generated].slice(0,3);
    }
    if(!nextPlan.length){toast('No new verified places were found for this day. Try again in a moment.');return;}
    if(updateDay(index,nextPlan))toast(`${current?.day||`Day ${index+1}`} regenerated and saved.`);
