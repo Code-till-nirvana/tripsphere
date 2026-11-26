@@ -6,6 +6,12 @@ function tokens(value=''){ return normalize(value).toLowerCase().split(/[^a-z0-9
 const genericPlaceWords = new Set(['the','and','for','from','with','near','india','mumbai','house','bungalow','shrine','oratory','church','temple','park','hotel','cafe','restaurant','attraction','attractions','place','museum','market']);
 function distinctiveTokens(value=''){ return tokens(value).filter(token=>!genericPlaceWords.has(token)); }
 function cacheKey(...parts) { return parts.map(normalize).join('|').toLowerCase(); }
+function isCelebrityResidence(value='') {
+  const normalized=normalize(value).toLowerCase();
+  const residence=/\b(house|bungalow|residence|home)\b/.test(normalized);
+  const person=/\b(khan|bachchan|bacchan|shah rukh|srk)\b/.test(normalized);
+  return residence&&person;
+}
 
 async function wikipediaSummaryImage(term) {
   if (!term) return '';
@@ -90,6 +96,9 @@ async function wikimediaCommonsImage(searchTerm, preferredTerms=[]) {
 
 export async function getPlaceImage(name = '', destination = '', extra = '') {
   const place = normalize(name); const city = normalize(destination).split(',')[0]; const detail = normalize(extra);
+  // Actor profile photos are frequently returned for searches of celebrity
+  // homes. Let the UI use its explicitly labeled city view instead.
+  if (isCelebrityResidence(place)) return '';
   const key = cacheKey('place', place, city, detail); if (cache.has(key)) return cache.get(key);
   const category = detail || 'place';
   const queries = [
@@ -112,6 +121,7 @@ export async function getPlaceImage(name = '', destination = '', extra = '') {
 
 export async function getNearbyPlaceImage(name = '', destination = '', lat, lng, imageUrl = '') {
   if (imageUrl && /^https?:\/\//i.test(imageUrl)) return imageUrl;
+  if (isCelebrityResidence(name)) return '';
   const placeImage = await getPlaceImage(name, destination);
   return placeImage || wikipediaNearbyImage(lat, lng, name);
 }
