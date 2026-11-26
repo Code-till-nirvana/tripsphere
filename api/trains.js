@@ -32,18 +32,51 @@ function formatDate(value){
  const d=new Date(value);if(Number.isNaN(d.getTime()))return null;
  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 }
+function normalizeClassCode(value){
+  const text=String(value||'').toUpperCase().replace(/\s+/g,' ').trim();
+  const code=text.match(/^(1A|2A|3A|3E|SL)(?:\b|[^A-Z0-9])/);
+  if(code)return code[1];
+  if(/FIRST\s*AC|AC\s*FIRST/.test(text))return '1A';
+  if(/SECOND\s*AC|AC\s*2(?:ND)?\s*TIER/.test(text))return '2A';
+  if(/THIRD\s*AC|AC\s*3(?:RD)?\s*TIER/.test(text))return '3A';
+  if(/3\s*ECONOMY|AC\s*3\s*ECONOMY/.test(text))return '3E';
+  if(/SLEEPER/.test(text))return 'SL';
+  return text.replace(/\s/g,'');
+}
 function normalizeAvailability(av={}){
-  return Object.entries(av).map(([cls,v])=>{
-    const rawStatus=v?.availability||v?.status||v?.availabilityStatus;
+  const rows=Array.isArray(av)
+    ? av.map((value,index)=>[typeof value==='string'?value:value?.class||value?.classCode||value?.className||value?.classType||value?.code||value?.Name||String(index),value])
+    : Object.entries(av&&typeof av==='object'?av:{});
+  return rows.map(([key,value])=>{
+    const item=value&&typeof value==='object'?value:{};
+    const cls=normalizeClassCode(item.class||item.classCode||item.className||item.classType||item.code||item.Name||item.Class||key);
+    const rawStatus=typeof value==='string'&&normalizeClassCode(value)===cls?null:(typeof value==='string'?value:(item.availability||item.status||item.availabilityStatus||item.currentStatus||item.seatStatus));
     const status=!rawStatus||/check live availability/i.test(String(rawStatus))?'Availability not returned':String(rawStatus);
-    const m=status.match(/(?:AVAILABLE-|AVL\s*[-:]?\s*)(\d+)/i); const seats=m?Number(m[1]):0;
-    const fare=Number(v?.fare??v?.price??0)||null;
+    const m=status.match(/(?:AVAILABLE-|AVL\s*[-:]?\s*)(\d+)/i);
+    const seats=m?Number(m[1]):Number(item.seatsAvailable??item.availableSeats??item.seats??0)||0;
+    const fare=Number(item.fare??item.price??item.amount??item.totalFare??(typeof value==='number'?value:null))||null;
     return {class:cls,status,seats,fare,available:seats>0};
-  });
+  }).filter((item)=>/^(1A|2A|3A|3E|SL)$/.test(item.class));
+}
+function trainClasses(train={}){
+  const candidates=[train.classes,train.classAvailability,train.classWiseAvailability,train.availabilityCache,train.availability,train.fareDetails,train.fares,train.availableClasses,train.TrainClassList];
+  const merged=new Map();
+  for(const value of candidates){
+    for(const item of normalizeAvailability(value)){
+      const old=merged.get(item.class)||{};
+      merged.set(item.class,{...old,...item,
+        status:item.status==='Availability not returned'?(old.status||item.status):item.status,
+        fare:item.fare??old.fare,
+        seats:item.seats||old.seats,
+        available:item.available||old.available
+      });
+    }
+  }
+  return [...merged.values()];
 }
 function normalizeConfirm(payload){
  const list=payload?.data?.trainList||payload?.trains||payload?.data?.trains||[];
- return list.map((t,i)=>({id:t.trainNumber||t.trainNo||String(i),trainNumber:t.trainNumber||t.trainNo||'',trainName:t.trainName||t.name||'Indian Railways train',departureStation:t.departureStation||t.fromStationName||t.sourceStation||'',arrivalStation:t.arrivalStation||t.toStationName||t.destinationStation||'',departure:t.departureTime||t.departure||t.depTime||'—',arrival:t.arrivalTime||t.arrival||t.arrTime||'—',duration:t.travelTime||t.duration||'—',classes:normalizeAvailability(t.availabilityCache||t.availability||{})}));
+ return Array.isArray(list)?list.map((t,i)=>({id:t.trainNumber||t.trainNo||String(i),trainNumber:t.trainNumber||t.trainNo||'',trainName:t.trainName||t.name||'Indian Railways train',departureStation:t.departureStation||t.fromStationName||t.sourceStation||'',arrivalStation:t.arrivalStation||t.toStationName||t.destinationStation||'',departure:t.departureTime||t.departure||t.depTime||'—',arrival:t.arrivalTime||t.arrival||t.arrTime||'—',duration:t.travelTime||t.duration||'—',classes:trainClasses(t)})):[];
 }
 function normalizeIndianRail(payload){
  const list=payload?.data||payload?.trains||payload?.Trains||payload?.data?.trains||[];
@@ -57,7 +90,7 @@ function normalizeIndianRail(payload){
    departure:t.departureTime||t.DepartureTime||t.DepTimeFrom||t.departure||'—',
    arrival:t.arrivalTime||t.ArrivalTime||t.ArrTimeTo||t.arrival||'—',
    duration:t.duration||t.Duration||t.travelTime||'—',
-   classes:(t.availableClasses||t.TrainClassList||[]).map(c=>typeof c==='string'?{class:c,status:'Availability not returned',seats:0,fare:t.fare||null,available:false}:{class:c.Name||c.class||c.code||'Class',status:'Availability not returned',seats:0,fare:c.fare||t.fare||null,available:false})
+   classes:trainClasses(t)
  }));
 }
 function routeUrl(from,to,date){

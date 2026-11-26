@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 /* eslint-disable react/prop-types */
 import {
-  ArrowLeftRight, BusFront, CarFront, Check, Clock3, ExternalLink,
+  ArrowLeftRight, BusFront, CarFront, Check, Clock3, Copy, ExternalLink,
   Plane, RefreshCw, Route, TrainFront, Users
 } from 'lucide-react';
 import GoogleAddressAutocomplete from '@/components/custom/GoogleAddressAutocomplete';
 import { buildProviderSearchUrl, getLiveTrains, getRoadRoute } from '@/service/TravelApi';
 import { buildComparisonOptions, estimateVehicleCost, formatTravelDuration, rankTravelOptions } from '@/service/TravelComparison';
-import { addCalendarDays, formatIndiaCalendarDate, getIndiaCalendarDate, normalizeCalendarDate } from '@/service/TravelSearch';
+import { addCalendarDays, formatIndiaCalendarDate, formatRailSearchDetails, getIndiaCalendarDate, normalizeCalendarDate } from '@/service/TravelSearch';
 
 const TRAIN_CLASSES = ['1A', '2A', '3A', 'SL', '3E'];
 const BUS_TYPES = ['Any type', 'AC Sleeper', 'Non-AC Sleeper', 'AC Seater', 'Volvo / Premium AC'];
@@ -41,26 +41,33 @@ function Recommendation({ title, result, emptyText, featured = false }) {
   </article>;
 }
 
-function OptionCard({ option, tags, travellers }) {
-  const Icon = option.mode === 'Train' ? TrainFront : CarFront;
+function OptionCard({ option, tags, travellers, vehicle }) {
+  const Icon = option.mode === 'Train' ? TrainFront : option.mode === 'Bus' ? BusFront : option.mode === 'Flight' ? Plane : CarFront;
   const train = option.mode === 'Train';
+  const car = option.mode === 'Car / self-drive';
+  const externalSearch = option.mode === 'Bus' || option.mode === 'Flight';
   return <article className="comparison-option">
     <div className="comparison-option-top">
       <span className="comparison-option-icon"><Icon size={18}/></span>
-      <div className="comparison-option-heading"><span>{option.mode}</span><h3>{option.name}</h3></div>
-      <span className="comparison-confidence">{train ? 'Third-party schedule' : 'Road estimate'}</span>
+      <div className="comparison-option-heading"><h3>{option.name}</h3></div>
+      <span className="comparison-confidence">{train ? 'Unverified third-party schedule' : externalSearch ? 'External provider search only' : 'OSRM road estimate'}</span>
     </div>
     {tags.length > 0 && <div className="comparison-tags">{tags.map((tag) => <span key={tag}><Check size={12}/>{tag}</span>)}</div>}
     <div className="comparison-metrics">
       <div><small>{train ? 'Scheduled segment' : 'Estimated driving time'}</small><b>{formatTravelDuration(option.durationMinutes)}</b></div>
-      <div><small>{train ? `Fare / traveller · ${option.selectedClass}` : 'Fuel / energy / traveller'}</small><b>{option.perTraveller == null ? (train ? 'Fare unavailable' : 'Enter estimate') : `${option.costIsComplete ? '' : '~'}${inr(option.perTraveller)}`}</b></div>
-      <div><small>{train ? `Fare total · ${travellers} travellers` : 'Fuel / energy total'}</small><b>{option.totalCost == null ? (train ? 'Fare unavailable' : 'Enter estimate') : `${option.costIsComplete ? '' : '~'}${inr(option.totalCost)}`}</b></div>
-      <div><small>{train ? 'Availability' : 'Distance'}</small><b>{train ? option.availability : `${option.distanceKm.toLocaleString(undefined, { maximumFractionDigits: 1 })} km`}</b></div>
+      <div><small>{train ? `Fare / traveller · ${option.selectedClass}` : externalSearch ? 'Price / traveller' : 'Fuel / energy / traveller'}</small><b>{option.perTraveller == null ? (externalSearch ? 'Search provider' : train ? 'Fare unavailable' : 'Enter estimate') : `${option.costIsComplete ? '' : '~'}${inr(option.perTraveller)}`}</b></div>
+      <div><small>{train ? `Fare total · ${travellers} travellers` : externalSearch ? 'Group total' : 'Fuel / energy total'}</small><b>{option.totalCost == null ? (externalSearch ? 'Not returned' : train ? 'Fare unavailable' : 'Enter estimate') : `${option.costIsComplete ? '' : '~'}${inr(option.totalCost)}`}</b></div>
+      <div><small>{train || externalSearch ? 'Availability' : 'Distance'}</small><b>{train || externalSearch ? (train ? option.availability : 'Check provider') : `${option.distanceKm.toLocaleString(undefined, { maximumFractionDigits: 1 })} km`}</b></div>
     </div>
     {train && <div className="comparison-route-meta"><span><Clock3 size={13}/>{option.departureStation || `${option.departureCity} (station not returned)`} · {option.departure || 'Time unavailable'} → {option.arrivalStation || `${option.arrivalCity} (station not returned)`} · {option.arrival || 'Time unavailable'}</span></div>}
-    {!train && option.vehicleEstimate && <details className="comparison-cost-breakdown"><summary>Estimated fuel and cost details</summary><div><span>Energy used</span><b>{option.vehicleEstimate.quantity.toLocaleString(undefined, { maximumFractionDigits: 2 })} {option.vehicleEstimate.quantityUnit}</b><span>Fuel / energy cost</span><b>{inr(option.vehicleEstimate.totalCost)}</b><span>Tolls</span><b>Not available</b><span>Parking</span><b>Not available</b><span>Estimate scope</span><b>Fuel / energy only</b></div></details>}
+    {car && <details className="comparison-cost-breakdown comparison-car-cost"><summary>Set vehicle use and see one road cost estimate</summary><div className="comparison-car-fields">
+      <label>Vehicle<select value={vehicle.vehicleType} onChange={(event) => vehicle.setVehicleType(event.target.value)}><option value="petrol">Petrol</option><option value="diesel">Diesel</option><option value="cng">CNG</option><option value="electric">Electric</option></select></label>
+      <label>{vehicle.prefs.efficiencyLabel}<input type="number" min="0.01" step="any" value={vehicle.efficiency} onChange={(event) => vehicle.setEfficiency(event.target.value)} placeholder={vehicle.vehicleType === 'electric' ? 'e.g. 15' : 'Enter vehicle value'}/></label>
+      <label>{vehicle.prefs.priceLabel}<input type="number" min="0.01" step="any" value={vehicle.energyPrice} onChange={(event) => vehicle.setEnergyPrice(event.target.value)} placeholder="Enter current local price"/></label>
+      {option.vehicleEstimate && <p>Estimated fuel / energy: <b>{inr(option.vehicleEstimate.totalCost)}</b> · {inr(option.vehicleEstimate.perTraveller)} per traveller. Tolls and parking are excluded.</p>}
+    </div></details>}
     <p className="comparison-option-note">{option.costLabel}. {option.scopeNote}</p>
-    {option.bookingUrl && <a className="small-btn comparison-book-link" href={option.bookingUrl} target="_blank" rel="noreferrer">{train ? 'Check on IRCTC' : 'Open road directions'} <ExternalLink size={13}/></a>}
+    {option.bookingUrl && <a className="small-btn comparison-book-link" href={option.bookingUrl} target="_blank" rel="noreferrer">{train ? 'Check train options' : externalSearch ? `Search ${option.mode.toLowerCase()} prices` : 'Open road directions'} <ExternalLink size={13}/></a>}
   </article>;
 }
 
@@ -78,6 +85,7 @@ export default function TransportComparison({ trip }) {
   const [efficiency, setEfficiency] = useState(() => saved.efficiency || '');
   const [energyPrice, setEnergyPrice] = useState(() => saved.energyPrice || '');
   const [loading, setLoading] = useState(false);
+  const [railCopyMessage, setRailCopyMessage] = useState('');
   const [result, setResult] = useState(null);
   const requestVersion = useRef(0);
   const [sort, setSort] = useState(() => saved.sort || 'recommended');
@@ -110,22 +118,34 @@ export default function TransportComparison({ trip }) {
 
   const flightSearchUrl = useMemo(() => buildProviderSearchUrl('flight', origin.label, destination.label, date), [origin.label, destination.label, date]);
   const busSearchUrl = useMemo(() => buildProviderSearchUrl('bus', origin.label, destination.label, date, busType), [origin.label, destination.label, date, busType]);
+  const redRailSearchUrl = useMemo(() => buildProviderSearchUrl('redrail', origin.label, destination.label, date, selectedClass), [origin.label, destination.label, date, selectedClass]);
   const road = result?.road || null;
   const routeDistanceKm = Number(road?.routes?.[0]?.distance) / 1000;
   const vehicleEstimate = useMemo(() => estimateVehicleCost({ distanceKm: routeDistanceKm, vehicleType, efficiency, energyPrice, travellers }), [routeDistanceKm, vehicleType, efficiency, energyPrice, travellers]);
   const trains = useMemo(() => result?.trains || [], [result?.trains]);
   const options = useMemo(() => buildComparisonOptions({
-    route: road, trains, travellers, bookingUrl: officialRailUrl, roadUrl: result?.roadUrl || '',
+    route: road, trains, travellers, bookingUrl: redRailSearchUrl, roadUrl: result?.roadUrl || '',
+    flightUrl: flightSearchUrl, busUrl: busSearchUrl,
     selectedClass, origin: origin.label, destination: destination.label, vehicleEstimate
-  }), [road, trains, travellers, result?.roadUrl, selectedClass, origin.label, destination.label, vehicleEstimate]);
+  }), [road, trains, travellers, result?.roadUrl, selectedClass, origin.label, destination.label, vehicleEstimate, redRailSearchUrl, flightSearchUrl, busSearchUrl]);
   const recommendations = useMemo(() => rankTravelOptions(options), [options]);
   const modes = [...new Set(options.map((option) => option.mode))];
   const visibleOptions = options.filter((option) => modeFilter === 'all' || option.mode === modeFilter).sort((a, b) => {
     if (sort === 'price') return (a.totalCost ?? Infinity) - (b.totalCost ?? Infinity);
     if (sort === 'fastest' || sort === 'duration') return (a.durationMinutes ?? Infinity) - (b.durationMinutes ?? Infinity);
-    const featured = recommendations?.tripSphere?.option?.id;
-    return Number(b.id === featured) - Number(a.id === featured) || (a.durationMinutes ?? Infinity) - (b.durationMinutes ?? Infinity);
+    return (a.durationMinutes ?? Infinity) - (b.durationMinutes ?? Infinity);
   });
+
+  const copyAndOpenOfficialRail = async () => {
+    const details = formatRailSearchDetails({ from: origin.label, to: destination.label, date, trainClass: selectedClass });
+    window.open(officialRailUrl, '_blank', 'noopener,noreferrer');
+    try {
+      await navigator.clipboard.writeText(details);
+      setRailCopyMessage('Route, date and class copied. Paste them into IRCTC; its public link does not support prefilled searches.');
+    } catch {
+      setRailCopyMessage('IRCTC opens without prefilled fields. Enter the displayed route, date and class there.');
+    }
+  };
 
   const setDirection = (next) => {
     if (next === journey) return;
@@ -191,10 +211,9 @@ export default function TransportComparison({ trip }) {
 
       <div className="comparison-recommendations" aria-label="Travel recommendations">
         <Recommendation title="Fastest returned segment" result={recommendations.fastest} emptyText="Need at least two returned journey times to compare."/>
-        <Recommendation title="Cheapest option" result={recommendations.cheapest} emptyText="Need complete prices for at least two comparable options."/>
-        <Recommendation title="Best value" result={recommendations.bestValue} emptyText="Need comparable total prices and times for at least two options."/>
+      <Recommendation title="Cheapest option" result={recommendations.cheapest} emptyText="Waiting for comparable total prices from the included transport modes."/>
+      <Recommendation title="Best value" result={recommendations.bestValue} emptyText="Waiting for comparable prices and journey times across the included modes."/>
         <Recommendation title="Most convenient" result={recommendations.mostConvenient} emptyText="Boarding, access, waiting and transfer details are incomplete."/>
-        <Recommendation title="TripSphere recommendation" result={recommendations.tripSphere} emptyText={recommendations.tripSphere.reason} featured/>
       </div>
 
       <div className="comparison-tools">
@@ -202,23 +221,15 @@ export default function TransportComparison({ trip }) {
           <label>Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="recommended">Recommended</option><option value="price">Cheapest</option><option value="fastest">Fastest</option><option value="duration">Duration</option></select></label>
           <label>Mode <select value={modeFilter} onChange={(event) => setModeFilter(event.target.value)}><option value="all">All returned</option>{modes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}</select></label>
         </div></div>
-        <div className="comparison-class-row"><label htmlFor="train-class">Train class</label><select id="train-class" value={selectedClass} onChange={(event) => setSelectedClass(event.target.value)}>{TRAIN_CLASSES.map((code) => <option key={code} value={code}>{code === '1A' ? '1A · First AC' : code === '2A' ? '2A · Second AC' : code === '3A' ? '3A · Third AC' : code === 'SL' ? 'SL · Sleeper' : '3E · AC 3 Economy (if available)'}</option>)}</select><span>{matchedClasses ? `${matchedClasses} train(s) returned this class` : `No ${selectedClass} fare or class availability returned`}</span></div>
+        <div className="comparison-class-row"><label htmlFor="train-class">Train class</label><select id="train-class" value={selectedClass} onChange={(event) => setSelectedClass(event.target.value)}>{TRAIN_CLASSES.map((code) => <option key={code} value={code}>{code === '1A' ? '1A · First AC' : code === '2A' ? '2A · Second AC' : code === '3A' ? '3A · Third AC' : code === 'SL' ? 'SL · Sleeper' : '3E · AC 3 Economy (if available)'}</option>)}</select><span>{matchedClasses ? `${matchedClasses} train(s) list ${selectedClass}; check current fare and seats on IRCTC or redRail` : `${selectedClass} was not listed by the third-party feed; check the live provider search below`}</span></div>
         {!road?.routes?.[0] && result.road?.reason && <div className="comparison-feed-note">Road route unavailable: {result.road.reason}</div>}
-        {visibleOptions.length ? <div className="comparison-option-grid">{visibleOptions.map((option) => <OptionCard key={option.id} option={option} travellers={travellers} tags={[recommendations.fastest?.option?.id === option.id ? 'Fastest segment' : null, recommendations.cheapest?.option?.id === option.id ? 'Cheapest' : null, recommendations.bestValue?.option?.id === option.id ? 'Best value' : null, recommendations.tripSphere?.option?.id === option.id ? 'TripSphere pick' : null].filter(Boolean)}/>)}</div> : <div className="comparison-empty"><Route size={20}/><b>{options.length ? 'No returned options match these filters.' : 'No route results were returned for this search.'}</b><span>{result.road?.reason || result.railError || 'Use the provider searches below. No sample travel results are added.'}</span></div>}
+        {visibleOptions.length ? <div className="comparison-option-grid">{visibleOptions.map((option) => <OptionCard key={option.id} option={option} travellers={travellers} vehicle={{ vehicleType, setVehicleType: (value) => { setVehicleType(value); setEfficiency(''); setEnergyPrice(''); }, efficiency, setEfficiency, energyPrice, setEnergyPrice, prefs }} tags={[recommendations.fastest?.option?.id === option.id ? 'Fastest segment' : null, recommendations.cheapest?.option?.id === option.id ? 'Cheapest' : null, recommendations.bestValue?.option?.id === option.id ? 'Best value' : null].filter(Boolean)}/>)}</div> : <div className="comparison-empty"><Route size={20}/><b>{options.length ? 'No returned options match these filters.' : 'No route results were returned for this search.'}</b><span>{result.road?.reason || result.railError || 'Use the provider searches below. No sample travel results are added.'}</span></div>}
       </div>
-
-      {road?.routes?.[0] && <div className="comparison-estimator"><div><span className="section-kicker">SELF-DRIVE ESTIMATE</span><h3>Estimate your vehicle energy cost</h3><p>Based on the returned {routeDistanceKm.toLocaleString(undefined, { maximumFractionDigits: 1 })} km road distance. This is a private vehicle running-cost estimate, not a taxi quote.</p></div>
-        <div className="comparison-estimator-fields"><label>Vehicle type<select value={vehicleType} onChange={(event) => { setVehicleType(event.target.value); setEfficiency(''); setEnergyPrice(''); }}><option value="petrol">Petrol</option><option value="diesel">Diesel</option><option value="cng">CNG</option><option value="electric">Electric</option></select></label>
-          <label>{prefs.efficiencyLabel}<input type="number" min="0.01" step="any" value={efficiency} onChange={(event) => setEfficiency(event.target.value)} placeholder={vehicleType === 'electric' ? 'e.g. 15' : 'Enter vehicle value'}/></label>
-          <label>{prefs.priceLabel}<input type="number" min="0.01" step="any" value={energyPrice} onChange={(event) => setEnergyPrice(event.target.value)} placeholder="Enter current local price"/></label>
-        </div>
-        <div className="comparison-estimate-result">{vehicleEstimate ? <><b>Estimated fuel / energy cost: {inr(vehicleEstimate.totalCost)}</b><span>{inr(vehicleEstimate.perTraveller)} per traveller · {travellers} travellers · excludes tolls and parking</span></> : <span>Enter your vehicle&apos;s efficiency and current local energy price to calculate a labelled estimate.</span>}</div>
-      </div>}
-
       <div className="comparison-provider-grid">
-        <article className="comparison-provider-card"><span className="comparison-provider-icon"><TrainFront size={18}/></span><div><b>Train schedules and class fares</b><p>{trains.length ? `${trains.length} schedule record(s) came from ${result.railSource || 'a third-party feed'}. This feed is not verified against official station stops or inventory; confirm train number, stops, fare and availability on IRCTC.` : 'No live train inventory API with verified route, class fare and seat data is connected. Search directly on IRCTC.'}</p><label>Class to check<select value={selectedClass} onChange={(event) => setSelectedClass(event.target.value)}>{TRAIN_CLASSES.map((code) => <option key={code} value={code}>{code}</option>)}</select></label><a href={officialRailUrl} target="_blank" rel="noreferrer">Search official IRCTC <ExternalLink size={13}/></a></div></article>
-        <article className="comparison-provider-card"><span className="comparison-provider-icon"><BusFront size={18}/></span><div><b>Bus inventory</b><p>Live bus inventory is not connected. This opens an external RedBus search, not confirmed TripSphere results.</p><label>Preferred bus type<select value={busType} onChange={(event) => setBusType(event.target.value)}>{BUS_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label><a href={busSearchUrl} target="_blank" rel="noreferrer">Search buses for {formatIndiaCalendarDate(date)} <ExternalLink size={13}/></a></div></article>
-        <article className="comparison-provider-card"><span className="comparison-provider-icon"><Plane size={18}/></span><div><b>Flight search</b><p>Flight results are searched externally and are not included in TripSphere rankings.</p><a href={flightSearchUrl} target="_blank" rel="noreferrer">Search flights for {formatIndiaCalendarDate(date)} <ExternalLink size={13}/></a></div></article>
+        <article className="comparison-provider-card"><span className="comparison-provider-icon"><TrainFront size={18}/></span><div><b>Official IRCTC search</b><p>{trains.length ? `${trains.length} schedule record(s) came from ${result.railSource || 'a third-party feed'}. Confirm route, ${selectedClass} fare and seats with the provider.` : 'IRCTC does not document public URL fields for prefilled route/date searches, so TripSphere copies your details before opening the official page.'}</p><label>Class to check<select value={selectedClass} onChange={(event) => setSelectedClass(event.target.value)}>{TRAIN_CLASSES.map((code) => <option key={code} value={code}>{code}</option>)}</select></label><button type="button" className="small-btn comparison-provider-action" onClick={copyAndOpenOfficialRail}><Copy size={13}/> Copy details & open IRCTC</button>{railCopyMessage && <small role="status">{railCopyMessage}</small>}</div></article>
+        <article className="comparison-provider-card"><span className="comparison-provider-icon"><TrainFront size={18}/></span><div><b>Live train fares on redRail</b><p>Opens redRail with the selected route and date when those search parameters are accepted by the provider. Verify the exact station pair and class before comparing fare or availability.</p><a href={redRailSearchUrl} target="_blank" rel="noreferrer">Check {selectedClass} on redRail <ExternalLink size={13}/></a></div></article>
+        <article className="comparison-provider-card"><span className="comparison-provider-icon"><BusFront size={18}/></span><div><b>Bus inventory</b><p>Live bus inventory is not connected to TripSphere. This route/date search opens redBus; its prices are not included in the comparison.</p><label>Preferred bus type<select value={busType} onChange={(event) => setBusType(event.target.value)}>{BUS_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label><a href={busSearchUrl} target="_blank" rel="noreferrer">Search buses for {formatIndiaCalendarDate(date)} <ExternalLink size={13}/></a></div></article>
+        <article className="comparison-provider-card"><span className="comparison-provider-icon"><Plane size={18}/></span><div><b>Flight search</b><p>Flight prices cannot yet be fetched into TripSphere. Open this route/date search to compare live fares on Google Flights.</p><a href={flightSearchUrl} target="_blank" rel="noreferrer">Search flights for {formatIndiaCalendarDate(date)} <ExternalLink size={13}/></a></div></article>
       </div>
       <p className="comparison-data-note">Sources: OSRM road route estimate and the train schedule feed shown above. Train data and inventory are not independently verified. Fuel cost is a user-entered estimate; tolls and parking were unavailable. Results refreshed {new Date(result.updatedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST.</p>
     </>}
