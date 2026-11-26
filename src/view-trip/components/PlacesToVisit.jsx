@@ -56,7 +56,7 @@ export default function PlacesToVisit({trip,onTripChange,weather=[]}){
      const name=normalizePlace(place?.place);
      if(!name||excluded.has(name)||uniqueNames.has(name))return false;
      uniqueNames.add(name);return true;
-    }).map(toStop);
+    }).map(place=>toStop({...place,image_url:''}));
     nextPlan=[...nextPlan,...generated].slice(0,3);
    }
    const targetCount=Math.max(3,currentPlan.length);
