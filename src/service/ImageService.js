@@ -3,6 +3,8 @@ const placePhotoCache = new Map();
 
 function normalize(value = '') { return String(value).replace(/\s+/g, ' ').trim(); }
 function tokens(value=''){ return normalize(value).toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2); }
+const genericPlaceWords = new Set(['the','and','for','from','with','near','india','mumbai','house','bungalow','shrine','oratory','church','temple','park','hotel','cafe','restaurant','attraction','attractions','place','museum','market']);
+function distinctiveTokens(value=''){ return tokens(value).filter(token=>!genericPlaceWords.has(token)); }
 function cacheKey(...parts) { return parts.map(normalize).join('|').toLowerCase(); }
 
 async function wikipediaSummaryImage(term) {
@@ -23,13 +25,13 @@ async function wikipediaSearchImage(term) {
     const response = await fetch(`https://en.wikipedia.org/w/api.php?${params}`);
     if (!response.ok) return '';
     const data = await response.json();
-    const wanted = tokens(term);
+    const wanted = distinctiveTokens(term);
     const pages = Object.values(data?.query?.pages || {}).map(page => {
       const titleTokens = tokens(page.title || '');
       const matches = wanted.filter(token => titleTokens.includes(token)).length;
       return { matches, url:page.original?.source || page.thumbnail?.source || '' };
     }).filter(page => page.url).sort((a,b)=>b.matches-a.matches);
-    return pages[0]?.matches ? pages[0].url : '';
+    return pages[0]?.matches >= Math.min(2, wanted.length) && wanted.length ? pages[0].url : '';
   } catch { return ''; }
 }
 
@@ -40,7 +42,7 @@ async function wikipediaNearbyImage(lat, lng, name = '') {
     const response = await fetch(`https://en.wikipedia.org/w/api.php?${params}`);
     if (!response.ok) return '';
     const data = await response.json();
-    const wanted = tokens(name);
+    const wanted = distinctiveTokens(name);
     const pages = Object.values(data?.query?.pages || {}).map(page => {
       const titleTokens = tokens(page.title || '');
       const matches = wanted.filter(token => titleTokens.includes(token)).length;
@@ -48,7 +50,7 @@ async function wikipediaNearbyImage(lat, lng, name = '') {
     }).filter(page => page.url).sort((a,b)=>b.matches-a.matches || a.distance-b.distance);
     // For a nearby substitute require a clear name match rather than showing
     // an unrelated image from elsewhere in the city.
-    return pages[0]?.matches >= 1 ? pages[0].url : '';
+    return pages[0]?.matches >= Math.min(2, wanted.length) && wanted.length ? pages[0].url : '';
   } catch { return ''; }
 }
 
@@ -60,7 +62,7 @@ async function wikimediaCommonsImage(searchTerm, preferredTerms=[]) {
     if (!response.ok) return '';
     const data = await response.json();
     const pages = Object.values(data?.query?.pages || {});
-    const nameTerms = tokens(preferredTerms[0] || searchTerm);
+    const nameTerms = distinctiveTokens(preferredTerms[0] || searchTerm);
     const contextTerms = tokens(preferredTerms.slice(1).join(' '));
     const scored = pages.map(page=>{
       const title=page?.title||''; const titleTokens=tokens(title);
@@ -69,7 +71,7 @@ async function wikimediaCommonsImage(searchTerm, preferredTerms=[]) {
       const score=nameMatches*10+contextMatches;
       const info=page?.imageinfo?.[0];
       return {score,nameMatches,url:info?.thumburl||info?.url||''};
-    }).filter(x=>x.url&&x.nameMatches>0).sort((a,b)=>b.score-a.score);
+    }).filter(x=>x.url&&x.nameMatches>=Math.min(2,nameTerms.length)&&nameTerms.length).sort((a,b)=>b.score-a.score);
     return (scored[0]?.score > 0 ? scored[0]?.url : '') || '';
   } catch { return ''; }
 }
