@@ -58,7 +58,7 @@ export default function HotelCardItem({hotel,destination,trip}){
     {photo?<img src={photo} alt={`${hotel?.name} property`} loading="lazy"/>:<div className="hotel-photo-fallback"><MapPin size={24}/><span>Property photos</span></div>}
    </a>
    <div className="hotel-card-body"><h3>{hotel?.name}</h3><p><MapPin size={12}/> {hotel?.address||destination}</p>
-    <div className="hotel-meta"><span>{hotel?.price?'₹ '+hotel.price:'Check current rates'}</span>{hotel?.rating&&<span><Star size={12}/> {hotel.rating}</span>}</div>
+    <div className="hotel-meta">{hotel?.price&&<span>₹ {hotel.price}</span>}{hotel?.rating&&<span><Star size={12}/> {hotel.rating}</span>}</div>
     <div className="hotel-link-row"><a className="hotel-link" href={hotelUrl} target="_blank" rel="noreferrer">Google Hotels · {checkin&&checkout?`${checkin} – ${checkout}`:'Choose dates'} <ExternalLink size={12}/></a><a className="hotel-link secondary" href={bookingUrl} target="_blank" rel="noreferrer">Booking.com · same dates <ExternalLink size={12}/></a><a className="hotel-link secondary" href={mapUrl} target="_blank" rel="noreferrer">View map <ExternalLink size={12}/></a></div>
    </div>
   </article>;

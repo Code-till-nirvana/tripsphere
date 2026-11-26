@@ -98,5 +98,8 @@ export function buildTransportOptions(from='Origin', to='Destination', originCoo
   ].map(x=>({...x,from,to,date,distanceKm:roadKm}));
 }
 export function buildHotelComparisons(hotels=[]) {
-  return hotels.slice(0,4).map((hotel)=>({ ...hotel, sources:[{name:'Trip estimate',price:hotel.price||'Check current rates'},{name:'Hotel direct',price:'View property'}],bestRate:hotel.price||'Check current rates'}));
+  return hotels
+    .filter((hotel) => Array.isArray(hotel.sources) && hotel.sources.length > 1 && hotel.sources.some((source) => source?.price))
+    .slice(0,4)
+    .map((hotel) => ({ ...hotel, bestRate: hotel.bestRate || hotel.price || '' }));
 }
