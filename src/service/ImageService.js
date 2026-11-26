@@ -17,6 +17,11 @@ async function wikipediaSummaryImage(term) {
     // The REST summary endpoint may resolve a fuzzy or misspelled query to a
     // different article (for example a person's profile for a place name).
     // Never use that image unless the returned article title matches the place.
+    const requestedTitle = normalize(term).toLowerCase();
+    const returnedTitle = normalize(data?.title || '').toLowerCase();
+    if (requestedTitle && requestedTitle === returnedTitle) {
+      return data?.originalimage?.source || data?.thumbnail?.source || '';
+    }
     const wanted = distinctiveTokens(term);
     const title = tokens(data?.title || '');
     const matches = wanted.filter(token => title.includes(token)).length;
