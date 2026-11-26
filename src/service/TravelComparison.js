@@ -85,7 +85,7 @@ const normalizeTrain = (train, index, travellers, bookingUrl, selectedClass, fro
   };
 };
 
-export function buildComparisonOptions({ route, trains = [], travellers = 1, bookingUrl = '', roadUrl = '', flightUrl = '', busUrl = '', selectedClass = 'SL', origin = '', destination = '', vehicleEstimate = null }) {
+export function buildComparisonOptions({ route, trains = [], travellers = 1, bookingUrl = '', roadUrl = '', selectedClass = 'SL', origin = '', destination = '', vehicleEstimate = null }) {
   const options = [];
   const people = Math.max(1, Number(travellers) || 1);
   const road = route?.routes?.[0];
@@ -111,24 +111,6 @@ export function buildComparisonOptions({ route, trains = [], travellers = 1, boo
   (Array.isArray(trains) ? trains : []).forEach((train, index) => {
     const option = normalizeTrain(train, index, people, bookingUrl, selectedClass, origin, destination);
     if (option.durationMinutes != null || option.departure || option.arrival) options.push(option);
-  });
-  if (busUrl) options.push({
-    id: 'bus-search', mode: 'Bus', name: 'Live bus price search', durationMinutes: null,
-    durationLabel: 'Not returned', durationKind: 'provider search', distanceKm: null,
-    transfers: null, departure: null, arrival: null, perTraveller: null, totalCost: null,
-    costIsComplete: false, availability: 'Check provider', confidence: 'Live results open on redBus',
-    source: 'redBus search', bookingUrl: busUrl,
-    costLabel: 'TripSphere has no connected live bus inventory or fare feed',
-    scopeNote: 'Open the provider search for this route and date; its prices are not part of TripSphere rankings.'
-  });
-  if (flightUrl) options.push({
-    id: 'flight-search', mode: 'Flight', name: 'Live flight price search', durationMinutes: null,
-    durationLabel: 'Not returned', durationKind: 'provider search', distanceKm: null,
-    transfers: null, departure: null, arrival: null, perTraveller: null, totalCost: null,
-    costIsComplete: false, availability: 'Check provider', confidence: 'Live results open on Google Flights',
-    source: 'Google Flights search', bookingUrl: flightUrl,
-    costLabel: 'TripSphere has no connected live flight inventory or fare feed',
-    scopeNote: 'Open the provider search for this route and date; its prices are not part of TripSphere rankings.'
   });
   return options;
 }

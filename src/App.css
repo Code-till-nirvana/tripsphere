@@ -397,6 +397,8 @@ body{color:var(--trip-ink)}
 .comparison-provider-card a{display:inline-flex;align-items:center;gap:5px;color:#087965;font-size:10px;font-weight:800;text-decoration:none}
 .comparison-provider-card a:hover{text-decoration:underline}
 .comparison-provider-action{display:inline-flex;align-items:center;gap:6px;justify-self:start}
+.comparison-provider-actions{display:flex;flex-wrap:wrap;gap:7px}
+.comparison-provider-actions .comparison-provider-action{min-height:34px;white-space:nowrap}
 .comparison-provider-card small[role="status"]{color:#60736a;font-size:9px;line-height:1.45}
 .comparison-car-fields{grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:end}
 .comparison-car-fields label{display:grid;gap:5px;color:#52645b;font-size:9px;font-weight:800}
