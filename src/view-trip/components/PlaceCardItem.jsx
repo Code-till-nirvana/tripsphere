@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock3, ExternalLink, MapPin, Star, Globe, Compass } from 'lucide-react';
-import { getPlaceImageRecord } from '@/service/ImageService';
+import { getPlaceImageWithNearbyRecord } from '@/service/ImageService';
 
 function storedImage(imageUrl, attribution) {
   if (imageUrl && attribution?.sourceUrl && attribution?.license?.name) {
@@ -17,7 +17,7 @@ function placeCoordinates(value) {
   return null;
 }
 
-export default function PlaceCardItem({ place, destination }) {
+export default function PlaceCardItem({ place, destination, imageRequestId = '' }) {
   const placeName = place?.place;
   const placeCategory = place?.category;
   const placeDetails = place?.details;
@@ -32,10 +32,10 @@ export default function PlaceCardItem({ place, destination }) {
     const saved = storedImage(placeImageUrl, placeImageAttribution);
     setPhoto(saved);
     if (saved || !placeName) return () => { active = false; };
-    getPlaceImageRecord(placeName, destination, '', 'attraction', Number.isFinite(coordinateLat) && Number.isFinite(coordinateLng) ? { lat: coordinateLat, lng: coordinateLng } : null)
+    getPlaceImageWithNearbyRecord(placeName, destination, placeDetails, 'attraction', Number.isFinite(coordinateLat) && Number.isFinite(coordinateLng) ? { lat: coordinateLat, lng: coordinateLng } : null, imageRequestId || `place-${placeName}-${destination}`)
       .then((image) => { if (active) setPhoto(image); });
     return () => { active = false; };
-  }, [placeName, placeCategory, placeDetails, placeImageUrl, placeImageAttribution, destination, coordinateLat, coordinateLng]);
+  }, [placeName, placeCategory, placeDetails, placeImageUrl, placeImageAttribution, destination, coordinateLat, coordinateLng, imageRequestId]);
 
   const url = place?.map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place?.place || '')}`;
   return <article className="place-card">
