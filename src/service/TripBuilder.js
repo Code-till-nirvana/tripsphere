@@ -1,5 +1,5 @@
 import { discoverDestinationStops, discoverHotels } from '@/service/PlacesService';
-import { getDestinationImage, getPlaceImage } from '@/service/ImageService';
+import { getDestinationImage } from '@/service/ImageService';
 
 const categoryPlan = ['Culture', 'Food', 'Nature', 'History', 'Shopping', 'Viewpoint', 'Adventure'];
 
@@ -35,15 +35,6 @@ export async function buildLocalTrip({ location, days, origin, traveler, interes
     if (!places.some((p) => String(p.name || '').toLowerCase() === key)) places.push({ name: `${city} ${area}`, category: area, lat: coords?.lat, lon: coords?.lng, uri: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${city} ${area}`)}` });
   }
   const destinationImage = await getDestinationImage(location?.label || city);
-  const imageCache = new Map();
-
-  const getImage = async (place) => {
-    if (imageCache.has(place)) return imageCache.get(place);
-    const img = await getPlaceImage(place, city);
-    imageCache.set(place, img || destinationImage || '/placeholder.jpg');
-    return imageCache.get(place);
-  };
-
   const itinerary = [];
   let cursor = 0;
   for (let day = 0; day < count; day += 1) {
@@ -51,12 +42,11 @@ export async function buildLocalTrip({ location, days, origin, traveler, interes
     for (let slot = 0; slot < 3; slot += 1) {
       const item = places[cursor++];
       if (item) {
-        const image = await getImage(item.name);
         plan.push({
           time: slot === 0 ? 'Morning' : slot === 1 ? 'Afternoon' : 'Evening',
           place: item.name,
           details: `Explore ${item.name} as part of a ${categoryPlan[(day + slot) % categoryPlan.length].toLowerCase()}-focused day in ${city}.`,
-          image_url: image,
+          image_url: '',
           geo_coordinates: `${item.lat},${item.lon}`,
           ticket_pricing: 'Check current pricing',
           rating: item.rating || '—',
@@ -82,12 +72,11 @@ export async function buildLocalTrip({ location, days, origin, traveler, interes
     const key = String(hotel.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!key || hotelSeen.has(key)) continue;
     hotelSeen.add(key);
-    let image = hotel.image_url || '';
-    if (image.startsWith('File:')) image = '';
-    if (!(image.startsWith('https://') || image.startsWith('http://'))) image = await getPlaceImage(hotel.name, city, hotel.address);
     hotelOptions.push({
       ...hotel,
-      image_url: image || '',
+      // Let the view resolve a licensed, exact-property Commons photo lazily.
+      // OSM image tags do not consistently include the license/creator data.
+      image_url: '',
       geo_coordinates: `${hotel.lat},${hotel.lon}`,
       description: 'Verified mapped accommodation listing. Confirm amenities and rates with the property.',
       amenities: []
@@ -103,3 +92,4 @@ export async function buildLocalTrip({ location, days, origin, traveler, interes
     meta: { generatedBy: 'TripSphere local planner', interests: interests || [], traveler }
   };
 }
+
