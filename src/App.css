@@ -406,3 +406,13 @@ body{color:var(--trip-ink)}
 .comparison-car-fields p{grid-column:1/-1;margin:2px 0 0;color:#64746c;line-height:1.45}
 @media(max-width:960px){.comparison-estimator{grid-template-columns:1fr}.comparison-provider-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:620px){.comparison-estimator-fields{grid-template-columns:1fr}.comparison-provider-grid{grid-template-columns:1fr}.comparison-class-row{align-items:flex-start}.comparison-estimator{padding:13px}.comparison-car-fields{grid-template-columns:1fr!important}}
+
+
+/* Commons image attribution placement */
+.place-image-frame{position:relative;min-width:0}
+.place-image-frame .place-image-link{position:relative}
+.place-image-attribution{position:absolute;left:7px;right:7px;bottom:7px;z-index:2;display:flex;justify-content:flex-start;pointer-events:none}
+.place-image-attribution a{max-width:calc(100% - 66px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 6px;border-radius:6px;background:rgba(16,35,31,.78);color:#fff;font-size:9px;text-decoration:none;pointer-events:auto}
+.hotel-card{position:relative}
+.hotel-card .place-image-attribution{bottom:auto;top:138px}
+.view-shell .discovery-photo-credit{right:auto;left:7px;bottom:7px;max-width:calc(100% - 14px)}
