@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import { ExternalLink, MapPin, Star } from 'lucide-react';
-import { getPlaceImageRecord } from '@/service/ImageService';
+import { getPlaceImageWithNearbyRecord } from '@/service/ImageService';
 
 function formatLocalDate(value) {
  if(!value)return '';
@@ -35,6 +35,8 @@ export default function HotelCardItem({hotel,destination,trip}){
  const hotelAddress=hotel?.address;
  const hotelImageUrl=hotel?.image_url;
  const hotelImageAttribution=hotel?.image_attribution;
+ const hotelId=hotel?.id;
+ const tripId=trip?.id;
  const hotelLatitude=Number(hotel?.lat);
  const hotelLongitude=Number(hotel?.lon);
  useEffect(()=>{
@@ -44,11 +46,11 @@ export default function HotelCardItem({hotel,destination,trip}){
      if(saved){setPhoto(saved);return;}
      setPhoto(null);
      const coordinates=Number.isFinite(hotelLatitude)&&Number.isFinite(hotelLongitude)?{lat:hotelLatitude,lng:hotelLongitude}:null;
-     const img=await getPlaceImageRecord(hotelName,destination,hotelAddress,'hotel',coordinates);
+     const img=await getPlaceImageWithNearbyRecord(hotelName,destination,hotelAddress,'hotel',coordinates,`hotel-${tripId}-${hotelId||hotelName}-${hotelAddress}`);
      if(active)setPhoto(img);
    })();
    return()=>{active=false};
- },[hotelName,hotelAddress,destination,hotelImageUrl,hotelImageAttribution,hotelLatitude,hotelLongitude]);
+ },[hotelName,hotelAddress,destination,hotelImageUrl,hotelImageAttribution,hotelLatitude,hotelLongitude,tripId,hotelId]);
  const {checkin,checkout}=tripDates(trip);
  const query=[hotel?.name,hotel?.address,destination].filter(Boolean).join(' ');
  const guests=Math.max(1,Number(trip?.userSelection?.travelerCount||trip?.userSelection?.adults||2)||2);
