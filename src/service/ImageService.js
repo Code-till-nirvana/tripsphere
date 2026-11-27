@@ -1,19 +1,44 @@
 const destinationCache = new Map();
 const placeCache = new Map();
 const claimedFilesByCity = new Map();
-const COMMONS_CACHE_PREFIX = 'tripsphere:commons-photo:v1:';
+const COMMONS_CACHE_PREFIX = 'tripsphere:commons-photo:v2:';
 const COMMONS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 const commonsQueue = [];
 let activeCommonsRequests = 0;
 let lastCommonsRequestAt = 0;
 const STOP_WORDS = new Set(['the','and','for','from','with','near','of','in','at','a','an']);
 const HOTEL_TYPE_WORDS = new Set(['hotel','hotels','resort','inn','guest','house','suites','motel','hostel']);
+const ENTITY_TYPE_WORDS = new Set(['church','mosque','temple','hotel','resort','palace','fort','museum','market','garden','park','cafe','restaurant']);
+const DESCRIPTIVE_SUFFIXES = [
+  'astronomical observatory', 'observatory', 'archaeological site', 'heritage site',
+  'historical monument', 'monument', 'tourist attraction'
+];
 const REJECT = /\b(logo|poster|advertisement|advert|map|icon|screenshot|flag|coat of arms|diagram|drawing|illustration|collage|banner|ticket|brochure|cover)\b/i;
 
 const clean = (value = '') => String(value).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&#0*39;|&apos;/gi, "'").replace(/&quot;/g, '"').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
 const normalize = (value = '') => clean(value).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const tokens = (value = '') => normalize(value).split(' ').filter((word) => word.length > 1 && !STOP_WORDS.has(word));
 const cacheKey = (...parts) => parts.map(normalize).join('|');
+
+function corePlaceName(value = '', kind = 'attraction') {
+  let name = clean(value);
+  if (kind !== 'hotel') {
+    for (const suffix of DESCRIPTIVE_SUFFIXES) {
+      const pattern = new RegExp('\\s+' + suffix + '\\s*$', 'i');
+      if (pattern.test(name)) {
+        name = name.replace(pattern, '').trim();
+        break;
+      }
+    }
+  }
+  return name;
+}
+
+function destinationTokens(location = '') {
+  const parts = clean(location).split(',').map((part) => part.trim()).filter(Boolean);
+  const cityAndCountry = parts.length > 1 ? [parts[0], parts.at(-1)] : parts;
+  return [...new Set(cityAndCountry.flatMap(tokens))];
+}
 
 function readPersistentImage(key) {
   try {
@@ -95,8 +120,8 @@ function scoreCandidate(page, place, location, kind = 'attraction', coordinates 
   const license = licenseInfo(metadata);
   const searchable = normalize(`${title} ${description}`);
   const titleNormalized = normalize(title);
-  const wanted = tokens(place).filter((word) => kind !== 'hotel' || !HOTEL_TYPE_WORDS.has(word));
-  const locationTokens = tokens(location);
+  const wanted = tokens(corePlaceName(place, kind)).filter((word) => kind !== 'hotel' || !HOTEL_TYPE_WORDS.has(word));
+  const locationTokens = destinationTokens(location);
   if (!info?.thumburl || !license || !wanted.length || REJECT.test(`${title} ${description}`)) return null;
   if (!/^(image\/jpeg|image\/png|image\/webp)$/i.test(info.mime || '')) return null;
   if (Number(info.width || 0) < 480 || Number(info.height || 0) < 300) return null;
@@ -104,6 +129,10 @@ function scoreCandidate(page, place, location, kind = 'attraction', coordinates 
 
   const titleWords = new Set(titleNormalized.split(' '));
   const searchableWords = new Set(searchable.split(' '));
+  // A filename can mention a nearby location while depicting a different named
+  // place (for example, a church at Turkman Gate). Keep the photo with its entity.
+  if ([...ENTITY_TYPE_WORDS].some((word) => titleWords.has(word)
+    && !wanted.includes(word) && !(kind === 'hotel' && HOTEL_TYPE_WORDS.has(word)))) return null;
   const exactNameMatches = wanted.filter((word) => titleWords.has(word));
   const allNameMatches = wanted.filter((word) => searchableWords.has(word));
   const nameRatio = allNameMatches.length / wanted.length;
@@ -156,8 +185,9 @@ export function claimUniqueFile(image, place, location) {
 async function commonsSearch({ place, location = '', address = '', kind = 'attraction', coordinates = null }) {
   const name = clean(place);
   if (!name) return null;
-  const context = [address, location].filter(Boolean).join(' ');
-  const key = cacheKey(kind, name, context, coordinates?.lat ?? '', coordinates?.lng ?? '');
+  const coreName = corePlaceName(name, kind);
+  const city = clean(location).split(',')[0].trim();
+  const key = cacheKey(kind, name, location, address, coordinates?.lat ?? '', coordinates?.lng ?? '');
   if (placeCache.has(key)) return placeCache.get(key);
   const persisted = readPersistentImage(key);
   if (persisted !== undefined) {
@@ -167,26 +197,31 @@ async function commonsSearch({ place, location = '', address = '', kind = 'attra
     return null;
   }
   const task = (async () => {
-    try {
-      const params = new URLSearchParams({
-        action: 'query', generator: 'search', gsrsearch: `"${name}" ${context}`.trim(),
-        gsrnamespace: '6', gsrlimit: '5', prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata',
-        iiurlwidth: '1000', iiextmetadatalanguage: 'en',
-        iiextmetadatafilter: 'Artist|Attribution|Credit|GPSLatitude|GPSLongitude|ImageDescription|License|LicenseShortName|LicenseUrl|ObjectName',
-        format: 'json', origin: '*'
-      });
-      const response = await queuedCommonsRequest(() => fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
-        headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
-        signal: AbortSignal.timeout(9000)
-      }));
-      if (!response.ok) return null;
-      const data = await response.json();
-      const pages = Object.values(data?.query?.pages || {});
-      const candidates = rankCommonsCandidates(pages, { place: name, location: [address, location].filter(Boolean).join(', '), kind, coordinates });
-      return candidates.find((candidate) => claimUniqueFile(candidate, name, location)) || null;
-    } catch {
-      return null;
+    const queries = [...new Set([`"${coreName}" ${city}`.trim(), `${coreName} ${city}`.trim()])];
+    for (const query of queries) {
+      try {
+        const params = new URLSearchParams({
+          action: 'query', generator: 'search', gsrsearch: query,
+          gsrnamespace: '6', gsrlimit: '20', prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata',
+          iiurlwidth: '1000', iiextmetadatalanguage: 'en',
+          iiextmetadatafilter: 'Artist|Attribution|Credit|GPSLatitude|GPSLongitude|ImageDescription|License|LicenseShortName|LicenseUrl|ObjectName',
+          format: 'json', origin: '*'
+        });
+        const response = await queuedCommonsRequest(() => fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+          headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
+          signal: AbortSignal.timeout(9000)
+        }));
+        if (!response.ok) continue;
+        const data = await response.json();
+        const pages = Object.values(data?.query?.pages || {});
+        const candidates = rankCommonsCandidates(pages, { place: name, location, kind, coordinates });
+        const match = candidates.find((candidate) => claimUniqueFile(candidate, name, location));
+        if (match) return match;
+      } catch {
+        // Try the broader query if Commons rejects or times out on the exact-name query.
+      }
     }
+    return null;
   })();
   placeCache.set(key, task);
   const result = await task;

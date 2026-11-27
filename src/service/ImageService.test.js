@@ -39,6 +39,21 @@ test('keeps city and common attraction words in the exact place-name match', () 
   assert.equal(gateway.length, 1);
 });
 
+test('matches an attraction when map data appends a descriptive place type', () => {
+  const ranked = rankCommonsCandidates([
+    file({ title: 'Jantar Mantar Delhi 2026', description: 'Jantar Mantar observatory in Delhi, India' }),
+  ], { place: 'Jantar Mantar Astronomical Observatory', location: 'Delhi, Sansad Marg, Connaught Place, New Delhi, Delhi, 110001, India' });
+  assert.equal(ranked.length, 1);
+  assert.match(ranked[0].title, /Jantar Mantar/);
+});
+
+test('rejects a different attraction located at the named landmark', () => {
+  const ranked = rankCommonsCandidates([
+    file({ title: 'Delhi, Holy Trinity Church (Turkman gate)', description: 'The Holy Trinity Church at Turkman gate (Delhi), India' }),
+  ], { place: 'Turkman Gate', location: 'Delhi, India' });
+  assert.deepEqual(ranked, []);
+});
+
 test('rejects unrelated, generic, unlicensed, low-resolution and unsafe-license images', () => {
   const candidates = [
     file({ title: 'Delhi skyline', description: 'Delhi India' }),
