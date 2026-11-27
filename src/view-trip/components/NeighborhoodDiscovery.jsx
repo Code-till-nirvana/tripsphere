@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Compass, ExternalLink, MapPin, Search, Utensils, Coffee, ShoppingBag, Trees, Landmark } from 'lucide-react';
 import { discoverPlaces } from '@/service/PlacesService';
-import { getPlaceImageRecord } from '@/service/ImageService';
+import { getPlaceImageWithNearbyRecord } from '@/service/ImageService';
 
 const CATEGORIES = [
   { label: 'Attractions', query: 'attractions', icon: Landmark },
@@ -25,11 +25,12 @@ function DiscoveryPhoto({ photo, name }) {
   if (!photo?.url || failed) return <div className="discovery-photo"><Compass size={25} /><span>Photo unavailable</span></div>;
   return <div className="discovery-photo-wrap">
     <img src={photo.url} alt={`${name} photo`} loading="lazy" onError={() => setFailed(true)} />
-    <a className="discovery-photo-credit" href={photo.sourceUrl} target="_blank" rel="noreferrer">Photo: {photo.creator || 'Wikimedia Commons'} · {photo.license.name}</a>
+    <a className="discovery-photo-credit" href={photo.sourceUrl} target="_blank" rel="noreferrer">{photo.nearby ? `Nearby photo: ${photo.title}` : 'Photo'} · {photo.creator || 'Wikimedia Commons'} · {photo.license.name}</a>
   </div>;
 }
 
 export default function NeighborhoodDiscovery({ trip }) {
+  const tripId = trip?.id;
   const itinerary = trip?.tripData?.itinerary || [];
   const [dayIndex, setDayIndex] = useState(0);
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -56,7 +57,7 @@ export default function NeighborhoodDiscovery({ trip }) {
         if (active) { setPlaces(initial); setLoading(false); }
         initial.forEach(async (place, index) => {
           const point = coords(place.geo_coordinates) || (Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lon)) ? { lat: Number(place.lat), lng: Number(place.lon) } : null);
-          const photo = await getPlaceImageRecord(place.name, city, place.address || '', 'attraction', point);
+          const photo = await getPlaceImageWithNearbyRecord(place.name, city, place.address || '', 'attraction', point, `discovery-${tripId}-${dayIndex}-${category.query}-${place.id || place.name}`);
           if (active && photo) setPlaces((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, photo } : item));
         });
       } catch (error) {
@@ -65,7 +66,7 @@ export default function NeighborhoodDiscovery({ trip }) {
       }
     })();
     return () => { active = false; };
-  }, [dayIndex, category.query, category.label, city, day?.plan, anchor?.lat, anchor?.lng]);
+  }, [dayIndex, category.query, category.label, city, day?.plan, anchor?.lat, anchor?.lng, tripId]);
 
   return <section className="section-block neighborhood-section">
     <div className="section-title"><div><div className="section-kicker"><Compass size={14} /> LOCAL DISCOVERY</div><h2>Explore around your destination</h2><span>Useful nearby places for your selected day and destination.</span></div></div>
