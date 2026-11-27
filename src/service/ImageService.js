@@ -24,7 +24,7 @@ function corePlaceName(value = '', kind = 'attraction') {
   let name = clean(value);
   if (kind !== 'hotel') {
     for (const suffix of DESCRIPTIVE_SUFFIXES) {
-      const pattern = new RegExp('\\s+' + suffix + '\\s*$', 'i');
+      const pattern = new RegExp(`\\s+${suffix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\s*$`, 'i');
       if (pattern.test(name)) {
         name = name.replace(pattern, '').trim();
         break;
@@ -129,8 +129,8 @@ function scoreCandidate(page, place, location, kind = 'attraction', coordinates 
 
   const titleWords = new Set(titleNormalized.split(' '));
   const searchableWords = new Set(searchable.split(' '));
-  // A filename can mention a nearby location while depicting a different named
-  // place (for example, a church at Turkman Gate). Keep the photo with its entity.
+  // A filename can mention a nearby gate/location while depicting a different
+  // named place (e.g. a church at Turkman Gate). Don't treat that as the gate.
   if ([...ENTITY_TYPE_WORDS].some((word) => titleWords.has(word)
     && !wanted.includes(word) && !(kind === 'hotel' && HOTEL_TYPE_WORDS.has(word)))) return null;
   const exactNameMatches = wanted.filter((word) => titleWords.has(word));
@@ -205,7 +205,6 @@ export function rankNearbyCommonsCandidates(pages) {
     .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || b.width * b.height - a.width * a.height);
 }
 
-
 export function claimUniqueFile(image, place, location) {
   const cityKey = cacheKey(location.split(',')[0]);
   const placeKey = cacheKey(place);
@@ -222,6 +221,7 @@ async function commonsSearch({ place, location = '', address = '', kind = 'attra
   if (!name) return null;
   const coreName = corePlaceName(name, kind);
   const city = clean(location).split(',')[0].trim();
+  const street = clean(address).split(',')[0].trim();
   const key = cacheKey(kind, name, location, address, coordinates?.lat ?? '', coordinates?.lng ?? '', requestId);
   if (placeCache.has(key)) return placeCache.get(key);
   const persisted = readPersistentImage(key);
@@ -232,8 +232,11 @@ async function commonsSearch({ place, location = '', address = '', kind = 'attra
     return null;
   }
   const task = (async () => {
-    const street = clean(address).split(',')[0].trim();
-    const queries = [...new Set([`"${coreName}" ${city}`.trim(), `${coreName} ${street} ${city}`.trim()])];
+    const queries = [...new Set([
+      `"${coreName}" ${city}`.trim(),
+      `${coreName} ${street} ${city}`.trim(),
+      `${coreName} ${city}`.trim()
+    ])];
     for (const query of queries) {
       try {
         const params = new URLSearchParams({
@@ -254,7 +257,7 @@ async function commonsSearch({ place, location = '', address = '', kind = 'attra
         const match = candidates.find((candidate) => claimUniqueFile(candidate, requestId || name, location));
         if (match) return match;
       } catch {
-        // Try the broader query if Commons rejects or times out on the exact-name query.
+        // Try the less restrictive query if Commons rejects or times out on this one.
       }
     }
     return null;
@@ -279,22 +282,40 @@ async function nearbyCommonsSearch({ place, location = '', address = '', kind = 
   }
   const task = (async () => {
     try {
-      const params = new URLSearchParams({
-        action: 'query', generator: 'geosearch',
-        ggscoord: `${Number(coordinates.lat)}|${Number(coordinates.lng)}`,
-        ggsradius: '750', ggsnamespace: '6', ggslimit: '50',
-        prop: 'coordinates|imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1000',
+      // Commons' generator=geosearch currently routes through CirrusSearch and
+      // often responds with cirrussearch-too-busy-error. The list=geosearch
+      // module is independent; fetch its file page IDs, then request metadata.
+      const geoParams = new URLSearchParams({
+        action: 'query', list: 'geosearch',
+        gscoord: `${Number(coordinates.lat)}|${Number(coordinates.lng)}`,
+        gsradius: '750', gsnamespace: '6', gslimit: '50',
+        format: 'json', origin: '*'
+      });
+      const base = 'https://commons.wikimedia.org/w/api.php?';
+      const geoResponse = await queuedCommonsRequest(() => fetch(`${base}${geoParams}`, {
+        headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
+        signal: AbortSignal.timeout(9000)
+      }));
+      if (!geoResponse.ok) return null;
+      const nearbyPages = (await geoResponse.json())?.query?.geosearch || [];
+      if (!nearbyPages.length) return null;
+      const imageParams = new URLSearchParams({
+        action: 'query', pageids: nearbyPages.map((page) => page.pageid).join('|'),
+        prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1000',
         iiextmetadatalanguage: 'en',
         iiextmetadatafilter: 'Artist|Attribution|Credit|ImageDescription|License|LicenseShortName|LicenseUrl|ObjectName',
         format: 'json', origin: '*'
       });
-      const response = await queuedCommonsRequest(() => fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+      const imageResponse = await queuedCommonsRequest(() => fetch(`${base}${imageParams}`, {
         headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
         signal: AbortSignal.timeout(9000)
       }));
-      if (!response.ok) return null;
-      const data = await response.json();
-      const candidates = rankNearbyCommonsCandidates(Object.values(data?.query?.pages || {}));
+      if (!imageResponse.ok) return null;
+      const imageData = await imageResponse.json();
+      const candidates = rankNearbyCommonsCandidates(nearbyPages.map((placePage) => ({
+        ...imageData?.query?.pages?.[placePage.pageid],
+        coordinates: [{ dist: placePage.dist }]
+      })));
       return candidates.find((candidate) => claimUniqueFile(candidate, requestId || cacheKey(place, address), location)) || null;
     } catch {
       return null;
