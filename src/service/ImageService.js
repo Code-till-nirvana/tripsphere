@@ -1,7 +1,7 @@
 const destinationCache = new Map();
 const placeCache = new Map();
 const claimedFilesByCity = new Map();
-const COMMONS_CACHE_PREFIX = 'tripsphere:commons-photo:v2:';
+const COMMONS_CACHE_PREFIX = 'tripsphere:commons-photo:v3:';
 const COMMONS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 const commonsQueue = [];
 let activeCommonsRequests = 0;
@@ -171,6 +171,40 @@ export function rankCommonsCandidates(pages, { place, location = '', kind = 'att
   return (pages || []).map((page) => scoreCandidate(page, place, location, kind, coordinates)).filter(Boolean).sort((a, b) => b.confidence - a.confidence || (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
 }
 
+function scoreNearbyCandidate(page) {
+  const info = page?.imageinfo?.[0];
+  const metadata = info?.extmetadata || {};
+  const title = clean(page?.title || '').replace(/^File:/i, '');
+  const description = clean(metadata.ImageDescription?.value || metadata.ObjectName?.value || '');
+  const creator = clean(metadata.Artist?.value || metadata.Credit?.value || '');
+  const license = licenseInfo(metadata);
+  const distanceMeters = Number(page?.coordinates?.[0]?.dist);
+  if (!info?.thumburl || !license || !Number.isFinite(distanceMeters) || distanceMeters > 750) return null;
+  if (!/^(image\/jpeg|image\/png|image\/webp)$/i.test(info.mime || '')) return null;
+  if (Number(info.width || 0) < 480 || Number(info.height || 0) < 300) return null;
+  if (!creator && !/public domain|cc0|creative commons zero/i.test(license.name)) return null;
+  if (REJECT.test(`${title} ${description}`)) return null;
+  return {
+    url: info.thumburl,
+    title,
+    confidence: Math.max(0, 0.45 * (1 - distanceMeters / 750)),
+    sourceUrl: `https://commons.wikimedia.org/wiki/${encodeURIComponent((page.title || '').replaceAll(' ', '_'))}`,
+    license,
+    creator,
+    attribution: clean(metadata.Attribution?.value || '') || `${creator} — ${license.name}`,
+    description,
+    distanceKm: distanceMeters / 1000,
+    width: Number(info.width),
+    height: Number(info.height),
+    nearby: true
+  };
+}
+
+export function rankNearbyCommonsCandidates(pages) {
+  return (pages || []).map(scoreNearbyCandidate).filter(Boolean)
+    .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || b.width * b.height - a.width * a.height);
+}
+
 export function claimUniqueFile(image, place, location) {
   const cityKey = cacheKey(location.split(',')[0]);
   const placeKey = cacheKey(place);
@@ -182,22 +216,27 @@ export function claimUniqueFile(image, place, location) {
   return true;
 }
 
-async function commonsSearch({ place, location = '', address = '', kind = 'attraction', coordinates = null }) {
+async function commonsSearch({ place, location = '', address = '', kind = 'attraction', coordinates = null, requestId = '' }) {
   const name = clean(place);
   if (!name) return null;
   const coreName = corePlaceName(name, kind);
   const city = clean(location).split(',')[0].trim();
-  const key = cacheKey(kind, name, location, address, coordinates?.lat ?? '', coordinates?.lng ?? '');
+  const street = clean(address).split(',')[0].trim();
+  const key = cacheKey(kind, name, location, address, coordinates?.lat ?? '', coordinates?.lng ?? '', requestId);
   if (placeCache.has(key)) return placeCache.get(key);
   const persisted = readPersistentImage(key);
   if (persisted !== undefined) {
     placeCache.set(key, Promise.resolve(persisted));
-    if (!persisted || claimUniqueFile(persisted, name, location)) return persisted;
+    if (!persisted || claimUniqueFile(persisted, requestId || name, location)) return persisted;
     placeCache.set(key, Promise.resolve(null));
     return null;
   }
   const task = (async () => {
-    const queries = [...new Set([`"${coreName}" ${city}`.trim(), `${coreName} ${city}`.trim()])];
+    const queries = [...new Set([
+      `"${coreName}" ${city}`.trim(),
+      `${coreName} ${street} ${city}`.trim(),
+      `${coreName} ${city}`.trim()
+    ])];
     for (const query of queries) {
       try {
         const params = new URLSearchParams({
@@ -215,7 +254,119 @@ async function commonsSearch({ place, location = '', address = '', kind = 'attra
         const data = await response.json();
         const pages = Object.values(data?.query?.pages || {});
         const candidates = rankCommonsCandidates(pages, { place: name, location, kind, coordinates });
-        const match = candidates.find((candidate) => claimUniqueFile(candidate, name, location));
+        const match = candidates.find((candidate) => claimUniqueFile(candidate, requestId || name, location));
+        if (match) return match;
+      } catch {
+        // Try the less restrictive query if Commons rejects or times out on this one.
+      }
+    }
+    return null;
+  })();
+  placeCache.set(key, task);
+  const result = await task;
+  persistImage(key, result);
+  // Keep hits and misses in memory to avoid repeated upstream requests in this session.
+  return result;
+}
+
+async function nearbyCommonsSearch({ place, location = '', address = '', kind = 'attraction', coordinates, requestId = '' }) {
+  if (!coordinates || !Number.isFinite(Number(coordinates.lat)) || !Number.isFinite(Number(coordinates.lng))) return null;
+  const key = cacheKey('nearby', kind, place, location, address, coordinates.lat, coordinates.lng, requestId);
+  if (placeCache.has(key)) return placeCache.get(key);
+  const persisted = readPersistentImage(key);
+  if (persisted !== undefined) {
+    placeCache.set(key, Promise.resolve(persisted));
+    if (!persisted || claimUniqueFile(persisted, requestId || cacheKey(place, address), location)) return persisted;
+    placeCache.set(key, Promise.resolve(null));
+    return null;
+  }
+  const task = (async () => {
+    try {
+      const params = new URLSearchParams({
+        action: 'query', generator: 'geosearch',
+        ggscoord: `${Number(coordinates.lat)}|${Number(coordinates.lng)}`,
+        ggsradius: '750', ggsnamespace: '6', ggslimit: '50',
+        prop: 'coordinates|imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1000',
+        iiextmetadatalanguage: 'en',
+        iiextmetadatafilter: 'Artist|Attribution|Credit|ImageDescription|License|LicenseShortName|LicenseUrl|ObjectName',
+        format: 'json', origin: '*'
+      });
+      const response = await queuedCommonsRequest(() => fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+        headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
+        signal: AbortSignal.timeout(9000)
+      }));
+      if (!response.ok) return null;
+      const data = await response.json();
+      const candidates = rankNearbyCommonsCandidates(Object.values(data?.query?.pages || {}));
+      return candidates.find((candidate) => claimUniqueFile(candidate, requestId || cacheKey(place, address), location)) || null;
+    } catch {
+      return null;
+    }
+  })();
+  placeCache.set(key, task);
+  const result = await task;
+  persistImage(key, result);
+  return result;
+}
+
+export function getPlaceImageRecord(name = '', destination = '', extra = '', kind = 'attraction', coordinates = null, requestId = '') {
+  return commonsSearch({ place: name, location: destination, address: extra, kind, coordinates, requestId });
+}
+
+export async function getPlaceImageWithNearbyRecord(name = '', destination = '', extra = '', kind = 'attraction', coordinates = null, requestId = '') {
+  const exact = await getPlaceImageRecord(name, destination, extra, kind, coordinates, requestId);
+  if (exact) return exact;
+  const nearby = await nearbyCommonsSearch({ place: name, location: destination, address: extra, kind, coordinates, requestId });
+  return nearby ? { ...nearby, nearby: true } : null;
+}
+
+
+export function claimUniqueFile(image, place, location) {
+  const cityKey = cacheKey(location.split(',')[0]);
+  const placeKey = cacheKey(place);
+  if (!claimedFilesByCity.has(cityKey)) claimedFilesByCity.set(cityKey, new Map());
+  const claims = claimedFilesByCity.get(cityKey);
+  const existingPlace = claims.get(image.title);
+  if (existingPlace && existingPlace !== placeKey) return false;
+  claims.set(image.title, placeKey);
+  return true;
+}
+
+async function commonsSearch({ place, location = '', address = '', kind = 'attraction', coordinates = null, requestId = '' }) {
+  const name = clean(place);
+  if (!name) return null;
+  const coreName = corePlaceName(name, kind);
+  const city = clean(location).split(',')[0].trim();
+  const key = cacheKey(kind, name, location, address, coordinates?.lat ?? '', coordinates?.lng ?? '', requestId);
+  if (placeCache.has(key)) return placeCache.get(key);
+  const persisted = readPersistentImage(key);
+  if (persisted !== undefined) {
+    placeCache.set(key, Promise.resolve(persisted));
+    if (!persisted || claimUniqueFile(persisted, requestId || name, location)) return persisted;
+    placeCache.set(key, Promise.resolve(null));
+    return null;
+  }
+  const task = (async () => {
+    const street = clean(address).split(',')[0].trim();
+    const queries = [...new Set([`"${coreName}" ${city}`.trim(), `${coreName} ${street} ${city}`.trim()])];
+    for (const query of queries) {
+      try {
+        const params = new URLSearchParams({
+          action: 'query', generator: 'search', gsrsearch: query,
+          gsrnamespace: '6', gsrlimit: '20', prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata',
+          iiurlwidth: '1000', iiextmetadatalanguage: 'en',
+          iiextmetadatafilter: 'Artist|Attribution|Credit|GPSLatitude|GPSLongitude|ImageDescription|License|LicenseShortName|LicenseUrl|ObjectName',
+          format: 'json', origin: '*'
+        });
+        const response = await queuedCommonsRequest(() => fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+          headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
+          signal: AbortSignal.timeout(9000)
+        }));
+        if (!response.ok) continue;
+        const data = await response.json();
+        const pages = Object.values(data?.query?.pages || {});
+        const candidates = rankCommonsCandidates(pages, { place: name, location, kind, coordinates });
+        const match = candidates.find((candidate) => claimUniqueFile(candidate, requestId || name, location));
         if (match) return match;
       } catch {
         // Try the broader query if Commons rejects or times out on the exact-name query.
@@ -230,8 +381,55 @@ async function commonsSearch({ place, location = '', address = '', kind = 'attra
   return result;
 }
 
-export function getPlaceImageRecord(name = '', destination = '', extra = '', kind = 'attraction', coordinates = null) {
-  return commonsSearch({ place: name, location: destination, address: extra, kind, coordinates });
+async function nearbyCommonsSearch({ place, location = '', address = '', kind = 'attraction', coordinates, requestId = '' }) {
+  if (!coordinates || !Number.isFinite(Number(coordinates.lat)) || !Number.isFinite(Number(coordinates.lng))) return null;
+  const key = cacheKey('nearby', kind, place, location, address, coordinates.lat, coordinates.lng, requestId);
+  if (placeCache.has(key)) return placeCache.get(key);
+  const persisted = readPersistentImage(key);
+  if (persisted !== undefined) {
+    placeCache.set(key, Promise.resolve(persisted));
+    if (!persisted || claimUniqueFile(persisted, requestId || cacheKey(place, address), location)) return persisted;
+    placeCache.set(key, Promise.resolve(null));
+    return null;
+  }
+  const task = (async () => {
+    try {
+      const params = new URLSearchParams({
+        action: 'query', generator: 'geosearch',
+        ggscoord: `${Number(coordinates.lat)}|${Number(coordinates.lng)}`,
+        ggsradius: '750', ggsnamespace: '6', ggslimit: '50',
+        prop: 'coordinates|imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1000',
+        iiextmetadatalanguage: 'en',
+        iiextmetadatafilter: 'Artist|Attribution|Credit|ImageDescription|License|LicenseShortName|LicenseUrl|ObjectName',
+        format: 'json', origin: '*'
+      });
+      const response = await queuedCommonsRequest(() => fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+        headers: { Accept: 'application/json', 'Api-User-Agent': 'TripSphere/1.0 (https://tripspherelive.netlify.app/)' },
+        signal: AbortSignal.timeout(9000)
+      }));
+      if (!response.ok) return null;
+      const data = await response.json();
+      const candidates = rankNearbyCommonsCandidates(Object.values(data?.query?.pages || {}));
+      return candidates.find((candidate) => claimUniqueFile(candidate, requestId || cacheKey(place, address), location)) || null;
+    } catch {
+      return null;
+    }
+  })();
+  placeCache.set(key, task);
+  const result = await task;
+  persistImage(key, result);
+  return result;
+}
+
+export function getPlaceImageRecord(name = '', destination = '', extra = '', kind = 'attraction', coordinates = null, requestId = '') {
+  return commonsSearch({ place: name, location: destination, address: extra, kind, coordinates, requestId });
+}
+
+export async function getPlaceImageWithNearbyRecord(name = '', destination = '', extra = '', kind = 'attraction', coordinates = null, requestId = '') {
+  const exact = await getPlaceImageRecord(name, destination, extra, kind, coordinates, requestId);
+  if (exact) return exact;
+  const nearby = await nearbyCommonsSearch({ place: name, location: destination, address: extra, kind, coordinates, requestId });
+  return nearby ? { ...nearby, nearby: true } : null;
 }
 
 export async function getPlaceImage(name = '', destination = '', extra = '', kind = 'attraction', coordinates = null) {
