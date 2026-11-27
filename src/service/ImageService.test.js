@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { claimUniqueFile, rankCommonsCandidates } from './ImageService.js';
+import { claimUniqueFile, rankCommonsCandidates, rankNearbyCommonsCandidates } from './ImageService.js';
 
 function file({ title, description, license = 'CC BY 4.0', licenseUrl = 'https://creativecommons.org/licenses/by/4.0/', creator = 'Example Photographer', mime = 'image/jpeg', width = 1600, height = 1000, gps = null }) {
   return {
@@ -102,3 +102,17 @@ test('prevents one Commons file from representing two different places in the sa
   assert.equal(claimUniqueFile(image, 'Landmark Two', 'A Different Test City'), true);
 });
 
+
+test('ranks nearby geotagged free photos by distance and keeps files unique across cards', () => {
+  const candidate = (title, distance, license = 'Public domain') => ({
+    title: `File:${title}`, coordinates: [{ dist: distance }],
+    imageinfo: [{ thumburl: `https://upload.wikimedia.org/${encodeURIComponent(title)}.jpg`, mime: 'image/jpeg', width: 1200, height: 800, extmetadata: {
+      LicenseShortName: { value: license }, LicenseUrl: { value: license === 'Public domain' ? '' : 'https://creativecommons.org/licenses/by/4.0/' },
+      Artist: { value: 'Local Photographer' }, ImageDescription: { value: title }
+    } }]
+  });
+  const ranked = rankNearbyCommonsCandidates([candidate('Distant place', 749), candidate('Closest place', 120), candidate('Too far', 751), candidate('Map poster', 80)]);
+  assert.deepEqual(ranked.map((image) => image.title), ['Closest place', 'Distant place']);
+  assert.equal(claimUniqueFile(ranked[0], 'card-one', 'Nearby Test City'), true);
+  assert.equal(claimUniqueFile(ranked[0], 'card-two', 'Nearby Test City'), false);
+});
